@@ -76,10 +76,22 @@ class Board {
     static copy(other) {
         const instance = new Board(other.getRowCount(), other.getColumnCount());
 
-        for (let i = 0; i < instance.getRowCount(); i++) {
-            for (let j = 0; j < instance.getColumnCount(); j++) {
-                const block = other.blockAt(i, j);
-                instance.setBlockAt(i, j, block);
+        for (let i = 0; i < instance.getSize(); i++) {
+            instance.#blocks[i] = other.#blocks[i];
+        }
+
+        return instance;
+    }
+
+    static fromJson(json) {
+        const data = JSON.parse(json);
+        const instance = new Board(data.rowCount, data.columnCount);
+
+        for (let i = 0; i < instance.getSize(); i++) {
+            const value = data.values[i];
+            if (typeof value === 'number') {
+                instance.#blocks[i] = Block.of(value);
+                instance.#blockCount++;
             }
         }
 
@@ -95,7 +107,7 @@ class Board {
     }
 
     getSize() {
-        return this.getRowCount() * this.getColumnCount();
+        return this.#rowCount * this.#columnCount;
     }
 
     getBlockCount() {
@@ -155,6 +167,18 @@ class Board {
             }
         }
         return emptySlots;
+    }
+
+    toJson() {
+        const values = [];
+        for (const block of this.#blocks) {
+            values.push(block?.getValue());
+        }
+        return JSON.stringify({
+            rowCount: this.#rowCount,
+            columnCount: this.#columnCount,
+            values
+        });
     }
 
     #ensureValidIndices(row, column) {
@@ -497,33 +521,72 @@ class Game {
 const BOARD_ROW_COUNT = 4;
 const BOARD_COLUMN_COUNT = 4;
 const INITIAL_BLOCK_COUNT = 2;
-const GOAL = 2048;
 const SPAWNED_BLOCKS = [Block.of(2), Block.of(4)];
 const SPAWNED_WEIGHTS = [90, 10];
 
-let score = 0;
-let stopped = false;
+const BOARD_STATE_KEY = 'board';
+const SCORE_STATE_KEY = 'score';
+
 const scoreElement = document.getElementById('score');
 const gameBoardElement = document.getElementById('game-board');
 const gameOverElement = document.getElementById('game-over');
 
-const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
-const strategyFactory = new DefaultBoardTraversalStrategyFactory();
-const merger = new DefaultBlockMerger();
-const game = new Game(board, strategyFactory, merger);
-game.setOnBlockMergedListener({
-    onBlockMerged: (block1, block2, mergedBlock) => {
-        score += mergedBlock.getValue();
-        renderScore();
-    }
-});
+let score = 0;
+let stopped = false;
+const game = (() => {
+    const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
+    const strategyFactory = new DefaultBoardTraversalStrategyFactory();
+    const merger = new DefaultBlockMerger();
+    const game = new Game(board, strategyFactory, merger);
+    game.setOnBlockMergedListener({
+        onBlockMerged: (block1, block2, mergedBlock) => {
+            score += mergedBlock.getValue();
+            renderScore();
+        }
+    });
+    return game;
+})();
 
-const renderGameOver = () => {
-    gameOverElement.style.visibility = 'visible';
+const setState = (key, state) => {
+    if (typeof state !== 'string') {
+        state = JSON.stringify(state);
+    }
+    localStorage.setItem(key, state);
 }
 
-const hideGameOver = () => {
-    gameOverElement.style.visibility = 'hidden';
+const getState = (key) => {
+    return localStorage.getItem(key);
+}
+
+const saveStates = () => {
+    setState(SCORE_STATE_KEY, score);
+    setState(BOARD_STATE_KEY, game.getBoard().toJson());
+}
+
+const restoreStates = () => {
+    score = Number(getState(SCORE_STATE_KEY) ?? '0');
+    const savedBoardState = getState(BOARD_STATE_KEY);
+    if (!savedBoardState) {
+        return;
+    }
+
+    const savedBoard = Board.fromJson(savedBoardState);
+    const board = game.getBoard();
+    for (let i = 0; i < board.getRowCount(); i++) {
+        for (let j = 0; j < board.getColumnCount(); j++) {
+            const block = savedBoard.blockAt(i, j);
+            board.setBlockAt(i, j, block);
+        }
+    }
+}
+
+const refreshGameOver = () => {
+    if (stopped) {
+        gameOverElement.style.visibility = 'visible';
+    }
+    else {
+        gameOverElement.style.visibility = 'hidden';
+    }
 }
 
 const renderScore = () => {
@@ -535,11 +598,14 @@ const renderGameBoard = () => {
         gameBoardElement.deleteRow(i);
     }
 
+    const board = game.getBoard();
+
     for (let i = 0; i < BOARD_ROW_COUNT; i++) {
         const rowElement = gameBoardElement.insertRow();
         for (let j = 0; j < BOARD_COLUMN_COUNT; j++) {
             const cellElement = rowElement.insertCell();
-            const cellValue = game.getBoard().blockAt(i, j)?.getValue();
+            const block = board.blockAt(i, j);
+            const cellValue = block?.getValue();
             cellElement.innerHTML = cellValue ?? '';
         }
     }
@@ -566,7 +632,7 @@ const isGameOver = () => {
 
 const stopGame = () => {
     stopped = true;
-    renderGameOver();
+    refreshGameOver();
 }
 
 const moveInDirection = (direction) => {
@@ -581,6 +647,8 @@ const moveInDirection = (direction) => {
         if (isGameOver()) {
             stopGame();
         }
+
+        saveStates();
     }
 }
 const moveUp = moveInDirection(Direction.UP);
@@ -588,22 +656,31 @@ const moveDown = moveInDirection(Direction.DOWN);
 const moveLeft = moveInDirection(Direction.LEFT);
 const moveRight = moveInDirection(Direction.RIGHT);
 
-initGameBoard();
+if (!getState(BOARD_STATE_KEY)) {
+    initGameBoard();
+}
+else {
+    restoreStates();
+    stopped = isGameOver();
+    renderScore();
+    refreshGameOver();
+}
 renderGameBoard();
 
 const reset = () => {
-    board.clear();
+    game.getBoard().clear();
     score = 0;
     stopped = false;
-    hideGameOver();
+    refreshGameOver();
     renderScore();
     initGameBoard();
     renderGameBoard();
+    saveStates();
 }
 
 const supportDirectionButtons = document.getElementById('support-direction-buttons');
 const toggleDirectionButtons = () => {
-    if (supportDirectionButtons.style.display == 'block') {
+    if (supportDirectionButtons.style.display === 'block') {
         supportDirectionButtons.style.display = 'none';
     }
     else {
