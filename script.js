@@ -41,18 +41,35 @@ class Point {
 }
 
 class Block {
+    static #CONSTRUCTOR_KEY = Symbol();
+    static #pool = new Map();
     #value;
     
-    constructor(value) {
-        this.#value = value
-    }
-
-    static of(value) {
-        return new Block(value);
+    constructor(value, constructorKey) {
+        if (constructorKey !== Block.#CONSTRUCTOR_KEY) {
+            throw new Error('The Block() constructor is private. Use Block.of() instead.');
+        }
+        this.#value = value;
     }
 
     getValue() {
         return this.#value;
+    }
+
+    static of(value) {
+        const hash = Block.#computeHash(value);
+        let instance = Block.#pool.get(hash);
+        if (!instance) {
+            instance = new Block(value, Block.#CONSTRUCTOR_KEY);
+            Block.#pool.set(hash, instance);
+        }
+        return instance;
+    }
+
+    static #computeHash(value) {
+        let hash = 7;
+        hash = 13 * hash + value;
+        return hash;
     }
 }
 
