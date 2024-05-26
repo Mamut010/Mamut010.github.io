@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>2048</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="./reset.css">
+        <link rel="stylesheet" href="./styles.css">
+        <script defer src="./swipe-listener.min.js"></script>
+        <script defer src="./script.js"></script>
+        <script defer src="./defer.js"></script>
+    </head>
+    <body>
+        <div class="page-container">
+            <h1 id="game-title">2048</h1>
+            <div class="direction-buttons-container">
+                <h2 id="direction-buttons-usage-prompt">Use the direction buttons to play</h2>
+                <table>
+                    <tr>
+                        <td></td>
+                        <td><button type="button" onclick="moveUp()">↑</button></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <button type="button" onclick="moveLeft()">←</button>
+                        </td>
+                        <td>
+                            <button type="button" onclick="moveDown()">↓</button>
+                        </td>
+                        <td>
+                            <button type="button" onclick="moveRight()">→</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <h2 id="swipe-usage-prompt">Swipe to play</h2>
+
+            <h3>
+                Score: <span id="score">0</span>
+            </h3>
+            
+            <table id="game-board">
+            </table>
+    
+            <p id="game-over">
+                <b>GAME OVER</b>
+            </p>
+
+            <div id="support-direction-buttons">
+                <table>
+                    <tr>
+                        <td></td>
+                        <td><button type="button" onclick="moveUp()">↑</button></td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <button type="button" onclick="moveLeft()">←</button>
+                        </td>
+                        <td>
+                            <button type="button" onclick="moveDown()">↓</button>
+                        </td>
+                        <td>
+                            <button type="button" onclick="moveRight()">→</button>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <div>
+                <button id="reset-button" type="button" onclick="reset()">RESET</button>
+                <button id="toggle-direction-button" type="button" onclick="toggleDirectionButtons()">
+                    TOGGLE DIRECTIONS
+                </button>
+            </div>
+        </div>
+    </body>
+</html>
