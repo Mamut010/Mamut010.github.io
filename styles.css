@@ -60,7 +60,7 @@ body {
     font-size: 130%;
     background-color: #eee4da;
     border-radius: 3px;
-    animation: cell-fade-in 200ms forwards ease
+    animation: cell-fade-in 400ms forwards ease
 }
 
 #game-over {
