@@ -24,7 +24,6 @@ const game = (() => {
     game.setOnBlockMergedListener({
         onBlockMerged: (block1, block2, mergedBlock) => {
             score += mergedBlock.getValue();
-            renderScore();
         }
     });
     return game;
@@ -63,13 +62,8 @@ const restoreStates = () => {
     }
 }
 
-const refreshGameOver = () => {
-    if (stopped) {
-        gameOverElement.style.visibility = 'visible';
-    }
-    else {
-        gameOverElement.style.visibility = 'hidden';
-    }
+const hasSavedStates = () => {
+    return getState(SCORE_STATE_KEY) && getState(BOARD_STATE_KEY);
 }
 
 const renderScore = () => {
@@ -94,6 +88,21 @@ const renderGameBoard = () => {
     }
 }
 
+const refreshGameOver = () => {
+    if (stopped) {
+        gameOverElement.style.visibility = 'visible';
+    }
+    else {
+        gameOverElement.style.visibility = 'hidden';
+    }
+}
+
+const renderGame = () => {
+    renderScore();
+    renderGameBoard();
+    refreshGameOver();
+}
+
 const initGameBoard = () => {
     for (let i = 0; i < INITIAL_BLOCK_COUNT; i++) {
         game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
@@ -113,30 +122,12 @@ const isGameOver = () => {
     return true;
 }
 
-const stopGame = () => {
-    stopped = true;
-    refreshGameOver();
-}
-
-if (!getState(BOARD_STATE_KEY)) {
-    initGameBoard();
-}
-else {
-    restoreStates();
-    stopped = isGameOver();
-    renderScore();
-    refreshGameOver();
-}
-renderGameBoard();
-
 const reset = () => {
     game.getBoard().clear();
     score = 0;
     stopped = false;
-    refreshGameOver();
-    renderScore();
     initGameBoard();
-    renderGameBoard();
+    renderGame();
     saveStates();
 }
 
@@ -156,12 +147,10 @@ const moveInDirection = (direction) => {
         }
 
         game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
-        renderGameBoard();
 
-        if (isGameOver()) {
-            stopGame();
-        }
+        stopped = isGameOver();
 
+        renderGame();
         saveStates();
     }
 }
@@ -193,3 +182,15 @@ gameBoardElement.addEventListener('swipe', (e) => {
         moveRight();
     }
 });
+
+const start = () => {
+    if (!hasSavedStates()) {
+        initGameBoard();
+    }
+    else {
+        restoreStates();
+        stopped = isGameOver();
+    }
+    renderGame();
+};
+start();
