@@ -460,7 +460,138 @@ class OnBlockMergedListener {
     }
 }
 
-class DefaultBoardOperation extends BoardOperation {
+class BoardUpTraversalStrategy extends BoardTraversalStrategy {
+    /**
+     * @param {Board} board 
+     * @param {BoardOperation} operation 
+     */
+    execute(board, operation) {
+        /**
+         * @type {PointMover}
+         */
+        const mover = {
+            move: (point, offset) => new Point(point.getRow() - offset, point.getColumn())
+        };
+        
+        for (let column = 0; column < board.getColumnCount(); column++) {
+            let isNewRound = true;
+            for (let row = 0; row < board.getRowCount(); row++) {
+                operation.operate(board, row, column, isNewRound, mover);
+                isNewRound = false;
+            }
+        }
+    }
+}
+
+class BoardDownTraversalStrategy extends BoardTraversalStrategy {
+    /**
+     * @param {Board} board 
+     * @param {BoardOperation} operation 
+     */
+    execute(board, operation) {
+        /**
+         * @type {PointMover}
+         */
+        const mover = {
+            move: (point, offset) => new Point(point.getRow() + offset, point.getColumn())
+        };
+        
+        for (let column = 0; column < board.getColumnCount(); column++) {
+            let isNewRound = true;
+            for (let row = board.getRowCount() - 1; row >= 0; row--) {
+                operation.operate(board, row, column, isNewRound, mover);
+                isNewRound = false;
+            }
+        }
+    }
+}
+
+class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
+    /**
+     * @param {Board} board 
+     * @param {BoardOperation} operation 
+     */
+    execute(board, operation) {
+        /**
+         * @type {PointMover}
+         */
+        const mover = {
+            move: (point, offset) => new Point(point.getRow(), point.getColumn() - offset)
+        };
+        
+        for (let row = 0; row < board.getRowCount(); row++) {
+            let isNewRound = true;
+            for (let column = 0; column < board.getColumnCount(); column++) {
+                operation.operate(board, row, column, isNewRound, mover);
+                isNewRound = false;
+            }
+        }
+    }
+}
+
+class BoardRightTraversalStrategy extends BoardTraversalStrategy {
+    /**
+     * @param {Board} board 
+     * @param {BoardOperation} operation 
+     */
+    execute(board, operation) {
+        /**
+         * @type {PointMover}
+         */
+        const mover = {
+            move: (point, offset) => new Point(point.getRow(), point.getColumn() + offset)
+        };
+        
+        for (let row = 0; row < board.getRowCount(); row++) {
+            let isNewRound = true;
+            for (let column = board.getColumnCount() - 1; column >= 0; column--) {
+                operation.operate(board, row, column, isNewRound, mover);
+                isNewRound = false;
+            }
+        }
+    }
+}
+
+class DefaultBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
+    /**
+     * @param {Direction} direction
+     * @return {BoardTraversalStrategy}
+     */
+    create(direction) {
+        switch(direction) {
+            case Direction.UP: return new BoardUpTraversalStrategy();
+            case Direction.DOWN: return new BoardDownTraversalStrategy();
+            case Direction.LEFT: return new BoardLeftTraversalStrategy();
+            case Direction.RIGHT: return new BoardRightTraversalStrategy();
+        };
+    }
+}
+
+class DefaultBlockMerger extends BlockMerger {
+    /**
+     * @param {Block} block1 
+     * @param {Block} block2 
+     * @return {boolean}
+     */
+    canMerge(block1, block2) {
+        return block1.getValue() === block2.getValue();
+    }
+    
+    /**
+     * @param {Block} block1 
+     * @param {Block} block2 
+     * @return {Block}
+     */
+    merge(block1, block2) {
+        const newValue = block1.getValue() + block2.getValue();
+        return Block.of(newValue);
+    }
+}
+
+/**
+ * This class is intended to be used internally by the Game class and should not be used elsewhere
+ */
+class InternalGameBoardOperation extends BoardOperation {
     /**
      * @type {number}
      */
@@ -596,134 +727,6 @@ class DefaultBoardOperation extends BoardOperation {
     }
 }
 
-class BoardUpTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
-            move: (point, offset) => new Point(point.getRow() - offset, point.getColumn())
-        };
-        
-        for (let column = 0; column < board.getColumnCount(); column++) {
-            let isNewRound = true;
-            for (let row = 0; row < board.getRowCount(); row++) {
-                operation.operate(board, row, column, isNewRound, mover);
-                isNewRound = false;
-            }
-        }
-    }
-}
-
-class BoardDownTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
-            move: (point, offset) => new Point(point.getRow() + offset, point.getColumn())
-        };
-        
-        for (let column = 0; column < board.getColumnCount(); column++) {
-            let isNewRound = true;
-            for (let row = board.getRowCount() - 1; row >= 0; row--) {
-                operation.operate(board, row, column, isNewRound, mover);
-                isNewRound = false;
-            }
-        }
-    }
-}
-
-class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
-            move: (point, offset) => new Point(point.getRow(), point.getColumn() - offset)
-        };
-        
-        for (let row = 0; row < board.getRowCount(); row++) {
-            let isNewRound = true;
-            for (let column = 0; column < board.getColumnCount(); column++) {
-                operation.operate(board, row, column, isNewRound, mover);
-                isNewRound = false;
-            }
-        }
-    }
-}
-
-class BoardRightTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
-            move: (point, offset) => new Point(point.getRow(), point.getColumn() + offset)
-        };
-        
-        for (let row = 0; row < board.getRowCount(); row++) {
-            let isNewRound = true;
-            for (let column = board.getColumnCount() - 1; column >= 0; column--) {
-                operation.operate(board, row, column, isNewRound, mover);
-                isNewRound = false;
-            }
-        }
-    }
-}
-
-class DefaultBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
-    /**
-     * @param {Direction} direction
-     * @return {BoardTraversalStrategy}
-     */
-    create(direction) {
-        switch(direction) {
-            case Direction.UP: return new BoardUpTraversalStrategy();
-            case Direction.DOWN: return new BoardDownTraversalStrategy();
-            case Direction.LEFT: return new BoardLeftTraversalStrategy();
-            case Direction.RIGHT: return new BoardRightTraversalStrategy();
-        };
-    }
-}
-
-class DefaultBlockMerger extends BlockMerger {
-    /**
-     * @param {Block} block1 
-     * @param {Block} block2 
-     * @return {boolean}
-     */
-    canMerge(block1, block2) {
-        return block1.getValue() === block2.getValue();
-    }
-    
-    /**
-     * @param {Block} block1 
-     * @param {Block} block2 
-     * @return {Block}
-     */
-    merge(block1, block2) {
-        const newValue = block1.getValue() + block2.getValue();
-        return Block.of(newValue);
-    }
-}
-
 class Game {
     /**
      * @type {Board}
@@ -741,7 +744,7 @@ class Game {
     #listener;
 
     /**
-     * @type {DefaultBoardOperation}
+     * @type {InternalGameBoardOperation}
      */
     #operation;
     
@@ -753,7 +756,7 @@ class Game {
     constructor(board, strategyFactory, merger) {
         this.#board = board;
         this.#strategyFactory = strategyFactory;
-        this.#operation = new DefaultBoardOperation(merger);
+        this.#operation = new InternalGameBoardOperation(merger);
         this.#listener = undefined;
     }
     
