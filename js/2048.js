@@ -710,7 +710,7 @@ class DefaultBlockMerger extends BlockMerger {
      * @return {boolean}
      */
     canMerge(block1, block2) {
-        return block1.getValue() == block2.getValue();
+        return block1.getValue() === block2.getValue();
     }
     
     /**
