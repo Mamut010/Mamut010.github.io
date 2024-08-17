@@ -383,6 +383,46 @@ class BoardOperation {
     }
 }
 
+class OnBlockMergedListener {
+    constructor() {
+        if(this.constructor === OnBlockMergedListener) {
+            throw new Error('Interface "OnBlockMergedListener" cannot be instantiated as it is an interface.');
+        }
+    }
+
+    /**
+     * @param {Block} block1 
+     * @param {Block} block2 
+     * @param {Block} mergedBlock 
+     */
+    onBlockMerged(block1, block2, mergedBlock) {
+        throw new Error('Method "onBlockMerged()" must be implemented.');
+    }
+}
+
+class GameBoardOperation extends BoardOperation {
+    constructor() {
+        super();
+        if(this.constructor === GameBoardOperation) {
+            throw new Error('Interface "GameBoardOperation" cannot be instantiated as it is an interface.');
+        }
+    }
+
+    /**
+     * @param {OnBlockMergedListener} listener 
+     */
+    prepare(listener = undefined) {
+        throw new Error('Method "prepare()" must be implemented.');
+    }
+
+    /**
+     * @returns {boolean}
+     */
+    didMove() {
+        throw new Error('Method "didMove()" must be implemented.');
+    }
+}
+
 class BoardTraversalStrategy {
     constructor() {
         if(this.constructor === BoardTraversalStrategy) {
@@ -440,23 +480,6 @@ class BlockMerger {
      */
     merge(block1, block2) {
         throw new Error('Method "merge()" must be implemented.');
-    }
-}
-
-class OnBlockMergedListener {
-    constructor() {
-        if(this.constructor === OnBlockMergedListener) {
-            throw new Error('Interface "OnBlockMergedListener" cannot be instantiated as it is an interface.');
-        }
-    }
-
-    /**
-     * @param {Block} block1 
-     * @param {Block} block2 
-     * @param {Block} mergedBlock 
-     */
-    onBlockMerged(block1, block2, mergedBlock) {
-        throw new Error('Method "onBlockMerged()" must be implemented.');
     }
 }
 
@@ -588,10 +611,7 @@ class DefaultBlockMerger extends BlockMerger {
     }
 }
 
-/**
- * This class is intended to be used internally by the Game class and should not be used elsewhere
- */
-class InternalGameBoardOperation extends BoardOperation {
+class DefaultGameBoardOperation extends GameBoardOperation {
     /**
      * @type {number}
      */
@@ -744,19 +764,19 @@ class Game {
     #listener;
 
     /**
-     * @type {InternalGameBoardOperation}
+     * @type {GameBoardOperation}
      */
     #operation;
     
     /**
      * @param {Board} board 
      * @param {BoardTraversalStrategyFactory} strategyFactory 
-     * @param {BlockMerger} merger 
+     * @param {GameBoardOperation} operation 
      */
-    constructor(board, strategyFactory, merger) {
+    constructor(board, strategyFactory, operation) {
         this.#board = board;
         this.#strategyFactory = strategyFactory;
-        this.#operation = new InternalGameBoardOperation(merger);
+        this.#operation = operation;
         this.#listener = undefined;
     }
     

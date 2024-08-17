@@ -20,7 +20,8 @@ const game = (() => {
     const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
     const strategyFactory = new DefaultBoardTraversalStrategyFactory();
     const merger = new DefaultBlockMerger();
-    const game = new Game(board, strategyFactory, merger);
+    const operation = new DefaultGameBoardOperation(merger);
+    const game = new Game(board, strategyFactory, operation);
     game.setOnBlockMergedListener({
         onBlockMerged: (block1, block2, mergedBlock) => {
             score += mergedBlock.getValue();
