@@ -575,12 +575,30 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
     }
 }
 
-class DefaultBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
+class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
+    /**
+     * @type {Map<Direction, BoardTraversalStrategy>}
+     */
+    #cache = new Map();
+
     /**
      * @param {Direction} direction
      * @return {BoardTraversalStrategy}
      */
     create(direction) {
+        let strategy = this.#cache.get(direction);
+        if (!strategy) {
+            strategy = this.#createNewStrategy(direction);
+            this.#cache.set(strategy);
+        }
+        return strategy;
+    }
+
+    /**
+     * @param {Direction} direction
+     * @return {BoardTraversalStrategy}
+     */
+    #createNewStrategy(direction) {
         switch(direction) {
             case Direction.UP: return new BoardUpTraversalStrategy();
             case Direction.DOWN: return new BoardDownTraversalStrategy();
