@@ -19,7 +19,7 @@ let stopped = false;
 const game = (() => {
     const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
     const strategyFactory = new CachingBoardTraversalStrategyFactory();
-    const merger = new DefaultBlockMerger();
+    const merger = new IdenticalBlockMerger();
     const operation = new DefaultGameBoardOperation(merger);
     const game = new Game(board, strategyFactory, operation);
     game.setOnBlockMergedListener({

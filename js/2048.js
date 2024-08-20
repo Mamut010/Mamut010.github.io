@@ -608,7 +608,7 @@ class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory
     }
 }
 
-class DefaultBlockMerger extends BlockMerger {
+class IdenticalBlockMerger extends BlockMerger {
     /**
      * @param {Block} block1 
      * @param {Block} block2 
