@@ -77,7 +77,12 @@ const hasSavedStates = () => {
 }
 
 const renderScore = () => {
-    scoreElement.innerHTML = score;
+    const oldScore = parseInt(scoreElement.innerText);
+    if (oldScore === score) {
+        return;
+    }
+
+    scoreElement.innerText = score;
 
     const scorePercentage = Math.min(score / MAX_SCORE_THRESHOLD, 1);
 
@@ -113,6 +118,7 @@ const renderGameBoard = () => {
             const block = board.blockAt(i, j);
             const cellValue = block?.getValue();
             cellElement.innerText = cellValue ?? '';
+            cellElement.classList.add('game-block');
             cells.push(cellElement);
         }
     }
