@@ -93,11 +93,11 @@ body {
     border-radius: 15px;
 }
 
-#game-board, #game-board > * {
+#game-board, .game-block {
     border: 1px solid black;
 }
 
-#game-board > * {
+.game-block {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -109,7 +109,7 @@ body {
     font-size: 1.3em;
     background-color: #eee4da;
     border-radius: 8px;
-    animation: cell-fade-in 400ms forwards ease
+    animation: cell-fade-in 400ms forwards ease;
 }
 
 #game-over {
@@ -165,7 +165,7 @@ body {
         gap: 0.6em;
     }
 
-    #game-board > * {
+    .game-block {
         height: 3em;
         width: 3em;
         font-size: 1.1em;
@@ -192,7 +192,7 @@ body {
         gap: 1.1em;
     }
 
-    #game-board > * {
+    .game-block {
         height: 4.5em;
         width: 4.5em;
         font-size: 1.5em;
@@ -242,7 +242,7 @@ body {
         gap: 1.2em;
     }
 
-    #game-board > * {
+    .game-block {
         height: 5em;
         width: 5em;
         font-size: 1.7em;
