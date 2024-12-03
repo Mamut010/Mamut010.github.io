@@ -9,6 +9,16 @@ const Direction = Object.freeze({
 
 class Point {
     /**
+     * @type {Symbol}
+     */
+    static #CONSTRUCTOR_KEY = Symbol();
+
+    /**
+     * @type {Map<string, Point>}
+     */
+    static #pool = new Map();
+
+    /**
      * @type {number}
      */
     #row;
@@ -19,12 +29,32 @@ class Point {
     #column;
 
     /**
-     * @param {number} row 
-     * @param {number} column 
+     * Private constructor. To instantiate a Point object, use Point.of()
+     * @param {number} row
+     * @param {number} column
+     * @param {Symbol} constructorKey
      */
-    constructor(row, column) {
+    constructor(row, column, constructorKey) {
+        if (constructorKey !== Point.#CONSTRUCTOR_KEY) {
+            throw new Error('The Point() constructor is private. Use Point.of() instead.');
+        }
         this.#row = row;
         this.#column = column;
+    }
+
+    /**
+     * @param {number} row
+     * @param {number} column
+     * @returns {Point}
+     */
+    static of(row, column) {
+        const key = `${row},${column}`;
+        let instance = Point.#pool.get(key);
+        if (!instance) {
+            instance = new Point(row, column, Point.#CONSTRUCTOR_KEY);
+            Point.#pool.set(key, instance);
+        }
+        return instance;
     }
 
     /**
@@ -269,7 +299,7 @@ class Board {
             for (let j = 0; j < this.getColumnCount(); j++) {
                 const block = this.#getBlock(i, j);
                 if (!block) {
-                    emptySlots.push(new Point(i, j));
+                    emptySlots.push(Point.of(i, j));
                 }
             }
         }
@@ -464,7 +494,7 @@ class BoardUpTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => new Point(point.getRow() - offset, point.getColumn())
+            move: (point, offset) => Point.of(point.getRow() - offset, point.getColumn())
         };
         
         for (let column = 0; column < board.getColumnCount(); column++) {
@@ -487,7 +517,7 @@ class BoardDownTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => new Point(point.getRow() + offset, point.getColumn())
+            move: (point, offset) => Point.of(point.getRow() + offset, point.getColumn())
         };
         
         for (let column = 0; column < board.getColumnCount(); column++) {
@@ -510,7 +540,7 @@ class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => new Point(point.getRow(), point.getColumn() - offset)
+            move: (point, offset) => Point.of(point.getRow(), point.getColumn() - offset)
         };
         
         for (let row = 0; row < board.getRowCount(); row++) {
@@ -533,7 +563,7 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => new Point(point.getRow(), point.getColumn() + offset)
+            move: (point, offset) => Point.of(point.getRow(), point.getColumn() + offset)
         };
         
         for (let row = 0; row < board.getRowCount(); row++) {
@@ -699,7 +729,7 @@ class DefaultGameBoardOperation extends GameBoardOperation {
      */
     #doPerOffset(board, row, column, offset, mover) {
         const currentBlock = board.blockAt(row, column);
-        const dstPoint = mover.move(new Point(row, column), offset);
+        const dstPoint = mover.move(Point.of(row, column), offset);
         const dstRow = dstPoint.getRow();
         const dstColumn = dstPoint.getColumn();
         const dstBlock = board.blockAt(dstRow, dstColumn);
