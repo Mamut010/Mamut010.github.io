@@ -197,9 +197,7 @@ const moveInDirection = (direction) => {
             return;
         }
 
-        for (let i = 0; i < 10; i++) {
-            game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
-        }
+        game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
 
         stopped = isGameOver();
 
