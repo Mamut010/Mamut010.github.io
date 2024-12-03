@@ -25,26 +25,6 @@ const supportDirectionButtons = document.getElementById('support-direction-butto
 let score = 0;
 let stopped = false;
 
-const hexToRgb = (hex) => {
-    const bigint = parseInt(hex.slice(1), 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return { r, g, b };
-}
-
-const interpolateColor = (startColor, endColor, factor) => {
-    return {
-      r: Math.round(startColor.r + (endColor.r - startColor.r) * factor),
-      g: Math.round(startColor.g + (endColor.g - startColor.g) * factor),
-      b: Math.round(startColor.b + (endColor.b - startColor.b) * factor),
-    };
-}
-
-const rgbToCss = (rgb) => {
-    return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-}
-
 const game = (() => {
     const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
     const strategyFactory = new CachingBoardTraversalStrategyFactory();
