@@ -18,8 +18,8 @@ const END_SCORE_COLOR = "#FFD700";
 const END_SCORE_SHADOW_COLOR = "#F5493d";
 const END_SCORE_SHADOW_OFFSET = 1;
 const END_SCORE_SHADOW_BLUR = 3;
-const MAX_SCORE_THRESHOLD = 12000;
-const MAX_VALUE_STYLE = 131072;
+const MAX_SCORE_THRESHOLD = 20000;
+const MAX_VALUE_STYLE = 1 << 17;
 
 const scoreElement = document.getElementById('score');
 const gameBoardElement = document.getElementById('game-board');
