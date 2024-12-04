@@ -60,15 +60,40 @@ class Point {
     /**
      * @returns {number}
      */
-    getRow() {
+    row() {
         return this.#row;
     }
 
     /**
      * @returns {number}
      */
-    getColumn() {
+    column() {
         return this.#column;
+    }
+
+    /**
+     * @param {number} rowDistance
+     * @param {number} columnDistance
+     * @returns {Point}
+     */
+    move(rowDistance, columnDistance) {
+        return Point.of(this.#row + rowDistance, this.#column + columnDistance);
+    }
+
+    /**
+     * @param {number} distance
+     * @returns {Point}
+     */
+    moveRow(distance) {
+        return this.move(distance, 0);
+    }
+
+    /**
+     * @param {number} distance
+     * @returns {Point}
+     */
+    moveColumn(distance) {
+        return this.move(0, distance);
     }
 }
 
@@ -174,11 +199,8 @@ class Board {
      */
     static copy(other) {
         const instance = new Board(other.getRowCount(), other.getColumnCount());
-
-        for (let i = 0; i < instance.getSize(); i++) {
-            instance.#blocks[i] = other.#blocks[i];
-        }
-
+        instance.#blocks = [...other.#blocks];
+        instance.#blockCount = other.#blockCount;
         return instance;
     }
 
@@ -494,7 +516,7 @@ class BoardUpTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => Point.of(point.getRow() - offset, point.getColumn())
+            move: (point, offset) => point.moveRow(-offset)
         };
         
         for (let column = 0; column < board.getColumnCount(); column++) {
@@ -517,7 +539,7 @@ class BoardDownTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => Point.of(point.getRow() + offset, point.getColumn())
+            move: (point, offset) => point.moveRow(offset)
         };
         
         for (let column = 0; column < board.getColumnCount(); column++) {
@@ -540,7 +562,7 @@ class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => Point.of(point.getRow(), point.getColumn() - offset)
+            move: (point, offset) => point.moveColumn(-offset)
         };
         
         for (let row = 0; row < board.getRowCount(); row++) {
@@ -563,7 +585,7 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
          * @type {PointMover}
          */
         const mover = {
-            move: (point, offset) => Point.of(point.getRow(), point.getColumn() + offset)
+            move: (point, offset) => point.moveColumn(offset)
         };
         
         for (let row = 0; row < board.getRowCount(); row++) {
@@ -706,12 +728,7 @@ class DefaultGameBoardOperation extends GameBoardOperation {
         let offset = 1 + this.#emptyCount;
         let success = false;
         while (offset > 0 && !success) {
-            try {
-                success = this.#doPerOffset(board, row, column, offset, mover);
-            }
-            catch (_) {
-                success = false;
-            }
+            success = this.#doPerOffset(board, row, column, offset, mover);
             offset--;
         }
 
@@ -728,10 +745,14 @@ class DefaultGameBoardOperation extends GameBoardOperation {
      * @param {PointMover} mover 
      */
     #doPerOffset(board, row, column, offset, mover) {
-        const currentBlock = board.blockAt(row, column);
         const dstPoint = mover.move(Point.of(row, column), offset);
-        const dstRow = dstPoint.getRow();
-        const dstColumn = dstPoint.getColumn();
+        const dstRow = dstPoint.row();
+        const dstColumn = dstPoint.column();
+        if (dstRow < 0 || dstRow >= board.getRowCount() || dstColumn < 0 || dstColumn >= board.getColumnCount()) {
+            return false;
+        }
+        
+        const currentBlock = board.blockAt(row, column);
         const dstBlock = board.blockAt(dstRow, dstColumn);
 
         if (!dstBlock) {
@@ -837,7 +858,7 @@ class Game {
         
         const emptySlots = this.#board.getEmptySlots();
         const slot = randomItem(emptySlots);
-        this.#board.setBlockAt(slot.getRow(), slot.getColumn(), block);
+        this.#board.setBlockAt(slot.row(), slot.column(), block);
     }
     
     /**
