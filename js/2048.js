@@ -48,13 +48,31 @@ class Point {
      * @returns {Point}
      */
     static of(row, column) {
-        const key = `${row},${column}`;
+        const key = Point.#paramsToString(row, column);
         let instance = Point.#pool.get(key);
         if (!instance) {
             instance = new Point(row, column, Point.#CONSTRUCTOR_KEY);
             Point.#pool.set(key, instance);
         }
         return instance;
+    }
+
+    /**
+     * @param {string} str
+     * @returns {Point} 
+     */
+    static parse(str) {
+        const tokens = str.split(',');
+        if (tokens.length !== 2) {
+            throw new Error();
+        }
+
+        const row = parseInt(tokens[0]);
+        const column = parseInt(tokens[1]);
+        if (isNaN(row) || isNaN(column)) {
+            throw new Error();
+        }
+        return Point.of(row, column);
     }
 
     /**
@@ -94,6 +112,22 @@ class Point {
      */
     moveColumn(distance) {
         return this.move(0, distance);
+    }
+
+    /**
+     * @returns {string}
+     */
+    toString() {
+        return Point.#paramsToString(this.#row, this.#column);
+    }
+
+    /**
+     * @param {number} row 
+     * @param {number} column 
+     * @returns {string}
+     */
+    static #paramsToString(row, column) {
+        return `${row},${column}`;
     }
 }
 
@@ -263,6 +297,15 @@ class Board {
 
     /**
      * @param {number} row 
+     * @param {number} column 
+     * @returns {boolean}
+     */
+    isInBound(row, column) {
+        return row >= 0 && row < this.#rowCount && column >= 0 && column < this.#columnCount;
+    }
+
+    /**
+     * @param {number} row 
      * @param {number} column
      */
     blockAt(row, column) {
@@ -312,20 +355,27 @@ class Board {
         return highestValue;
     }
 
-    /**
-     * @returns {Point[]}
-     */
-    getEmptySlots() {
-        const emptySlots = [];
-        for (let i = 0; i < this.getRowCount(); i++) {
-            for (let j = 0; j < this.getColumnCount(); j++) {
+
+    *getEmptySlots() {
+        for (let i = 0; i < this.#rowCount; i++) {
+            for (let j = 0; j < this.#columnCount; j++) {
                 const block = this.#getBlock(i, j);
                 if (!block) {
-                    emptySlots.push(Point.of(i, j));
+                    yield Point.of(i, j);
                 }
             }
         }
-        return emptySlots;
+    }
+
+    *getOccupiedSlots() {
+        for (let i = 0; i < this.#rowCount; i++) {
+            for (let j = 0; j < this.#columnCount; j++) {
+                const block = this.#getBlock(i, j);
+                if (block) {
+                    yield Point.of(i, j);
+                }
+            }
+        }
     }
 
     /**
@@ -370,6 +420,46 @@ class Board {
     }
 }
 
+class BlockMove {
+    /**
+     * @type {Point}
+     */
+    #from;
+
+    /**
+     * @type {Point}
+     */
+    #to;
+
+    /**
+     * @type {boolean}
+     */
+    #merged;
+
+    /**
+     * @param {Point} from 
+     * @param {Point} to 
+     * @param {boolean} merged 
+     */
+    constructor(from, to, merged) {
+        this.#from = from;
+        this.#to = to;
+        this.#merged = merged;
+    }
+
+    from() {
+        return this.#from;
+    }
+
+    to() {
+        return this.#to;
+    }
+
+    isMerged() {
+        return this.#merged;
+    }
+}
+
 class PointMover {
     constructor() {
         if(this.constructor === PointMover) {
@@ -395,13 +485,12 @@ class BoardOperation {
     }
 
     /**
-     * @param {Board} board 
-     * @param {number} row 
-     * @param {number} column 
-     * @param {boolean} isNewRound 
-     * @param {PointMover} mover 
+     * @param {Board} board
+     * @param {Point} point
+     * @param {boolean} isNewRound
+     * @param {PointMover} mover
      */
-    operate(board, row, column, isNewRound, mover) {
+    operate(board, point, isNewRound, mover) {
         throw new Error('Method "operate()" must be implemented.');
     }
 }
@@ -423,16 +512,16 @@ class OnBlockMergedListener {
     }
 }
 
-class GameBoardOperation extends BoardOperation {
+class StatefulBoardOperation extends BoardOperation {
     constructor() {
         super();
-        if(this.constructor === GameBoardOperation) {
-            throw new Error('Interface "GameBoardOperation" cannot be instantiated as it is an interface.');
+        if(this.constructor === StatefulBoardOperation) {
+            throw new Error('Interface "StatefulBoardOperation" cannot be instantiated as it is an interface.');
         }
     }
 
     /**
-     * @param {OnBlockMergedListener} listener 
+     * @param {OnBlockMergedListener|undefined} listener 
      */
     prepare(listener = undefined) {
         throw new Error('Method "prepare()" must be implemented.');
@@ -443,6 +532,13 @@ class GameBoardOperation extends BoardOperation {
      */
     didMove() {
         throw new Error('Method "didMove()" must be implemented.');
+    }
+
+    /**
+     * @returns {Map<Point, BlockMove>}
+     */
+    getMoveMap() {
+        throw new Error('Method "moveMap()" must be implemented.');
     }
 }
 
@@ -522,7 +618,7 @@ class BoardUpTraversalStrategy extends BoardTraversalStrategy {
         for (let column = 0; column < board.getColumnCount(); column++) {
             let isNewRound = true;
             for (let row = 0; row < board.getRowCount(); row++) {
-                operation.operate(board, row, column, isNewRound, mover);
+                operation.operate(board, Point.of(row, column), isNewRound, mover);
                 isNewRound = false;
             }
         }
@@ -545,7 +641,7 @@ class BoardDownTraversalStrategy extends BoardTraversalStrategy {
         for (let column = 0; column < board.getColumnCount(); column++) {
             let isNewRound = true;
             for (let row = board.getRowCount() - 1; row >= 0; row--) {
-                operation.operate(board, row, column, isNewRound, mover);
+                operation.operate(board, Point.of(row, column), isNewRound, mover);
                 isNewRound = false;
             }
         }
@@ -568,7 +664,7 @@ class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
         for (let row = 0; row < board.getRowCount(); row++) {
             let isNewRound = true;
             for (let column = 0; column < board.getColumnCount(); column++) {
-                operation.operate(board, row, column, isNewRound, mover);
+                operation.operate(board, Point.of(row, column), isNewRound, mover);
                 isNewRound = false;
             }
         }
@@ -591,7 +687,7 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
         for (let row = 0; row < board.getRowCount(); row++) {
             let isNewRound = true;
             for (let column = board.getColumnCount() - 1; column >= 0; column--) {
-                operation.operate(board, row, column, isNewRound, mover);
+                operation.operate(board, Point.of(row, column), isNewRound, mover);
                 isNewRound = false;
             }
         }
@@ -612,7 +708,7 @@ class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory
         let strategy = this.#cache.get(direction);
         if (!strategy) {
             strategy = this.#createNewStrategy(direction);
-            this.#cache.set(strategy);
+            this.#cache.set(direction, strategy);
         }
         return strategy;
     }
@@ -652,7 +748,7 @@ class IdenticalBlockMerger extends BlockMerger {
     }
 }
 
-class DefaultGameBoardOperation extends GameBoardOperation {
+class GameBoardOperation extends StatefulBoardOperation {
     /**
      * @type {number}
      */
@@ -669,12 +765,17 @@ class DefaultGameBoardOperation extends GameBoardOperation {
     #didMove;
 
     /**
+     * @type {Map<Point, BlockMove>}
+     */
+    #moveMap;
+
+    /**
      * @type {BlockMerger}
      */
     #merger;
 
     /**
-     * @type {OnBlockMergedListener}
+     * @type {OnBlockMergedListener|undefined}
      */
     #listener;
 
@@ -686,17 +787,19 @@ class DefaultGameBoardOperation extends GameBoardOperation {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
         this.#didMove = false;
+        this.#moveMap = new Map();
         this.#merger = merger;
         this.#listener = undefined;
     }
 
     /**
-     * @param {OnBlockMergedListener} listener 
+     * @param {OnBlockMergedListener|undefined} listener 
      */
     prepare(listener = undefined) {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
         this.#didMove = false;
+        this.#moveMap.clear();
         this.#listener = listener;
     }
 
@@ -708,19 +811,30 @@ class DefaultGameBoardOperation extends GameBoardOperation {
     }
 
     /**
+     * @returns {Map<Point, BlockMove>}
+     */
+    getMoveMap() {
+        return this.#moveMap;
+    }
+
+    /**
      * @param {Board} board 
-     * @param {number} row 
-     * @param {number} column 
+     * @param {Point} point
      * @param {boolean} isNewRound 
      * @param {PointMover} mover 
      */
-    operate(board, row, column, isNewRound, mover) {
+    operate(board, point, isNewRound, mover) {
         if (isNewRound) {
             this.#emptyCount = 0;
             this.#isDstMerged = false;
         }
 
-        if (!board.blockAt(row, column)) {
+        const row = point.row();
+        const column = point.column();
+        if (!board.isInBound(row, column)) {
+            return;
+        }
+        else if (!board.blockAt(row, column)) {
             this.#emptyCount++;
             return;
         }
@@ -728,7 +842,14 @@ class DefaultGameBoardOperation extends GameBoardOperation {
         let offset = 1 + this.#emptyCount;
         let success = false;
         while (offset > 0 && !success) {
-            success = this.#doPerOffset(board, row, column, offset, mover);
+            const dstPoint = mover.move(Point.of(row, column), offset);
+            const dstRow = dstPoint.row();
+            const dstColumn = dstPoint.column();
+            
+            if (board.isInBound(dstRow, dstColumn)) {
+                success = this.#moveBlock(board, point, dstPoint);
+            }
+
             offset--;
         }
 
@@ -739,30 +860,27 @@ class DefaultGameBoardOperation extends GameBoardOperation {
 
     /**
      * @param {Board} board 
-     * @param {number} row 
-     * @param {number} column 
-     * @param {number} offset
-     * @param {PointMover} mover 
+     * @param {Point} from
+     * @param {Point} to
      */
-    #doPerOffset(board, row, column, offset, mover) {
-        const dstPoint = mover.move(Point.of(row, column), offset);
-        const dstRow = dstPoint.row();
-        const dstColumn = dstPoint.column();
-        if (dstRow < 0 || dstRow >= board.getRowCount() || dstColumn < 0 || dstColumn >= board.getColumnCount()) {
-            return false;
-        }
-        
+    #moveBlock(board, from, to) {
+        const row = from.row();
+        const column = from.column();
+        const dstRow = to.row();
+        const dstColumn = to.column();
+
         const currentBlock = board.blockAt(row, column);
         const dstBlock = board.blockAt(dstRow, dstColumn);
 
+        let success;
         if (!dstBlock) {
             board.setBlockAt(dstRow, dstColumn, currentBlock);
             board.removeBlockAt(row, column);
             this.#isDstMerged = false;
-            return true;
+            success = true;
         }
         else if (!this.#merger.canMerge(currentBlock, dstBlock) || this.#isDstMerged) {
-            return false;
+            success = false;
         }
         else {
             const mergedBlock = this.#merger.merge(currentBlock, dstBlock);
@@ -770,11 +888,16 @@ class DefaultGameBoardOperation extends GameBoardOperation {
             board.removeBlockAt(row, column);
             this.#isDstMerged = true;
             this.#emptyCount++;
+            success = true;
 
             this.#notifyListener(currentBlock, dstBlock, mergedBlock);
-
-            return true;
         }
+
+        if (success) {
+            this.#moveMap.set(from, new BlockMove(from, to, this.#isDstMerged));
+        }
+
+        return success;
     }
 
     /**
@@ -804,14 +927,14 @@ class Game {
     #listener;
 
     /**
-     * @type {GameBoardOperation}
+     * @type {StatefulBoardOperation}
      */
     #operation;
     
     /**
      * @param {Board} board 
      * @param {BoardTraversalStrategyFactory} strategyFactory 
-     * @param {GameBoardOperation} operation 
+     * @param {StatefulBoardOperation} operation 
      */
     constructor(board, strategyFactory, operation) {
         this.#board = board;
@@ -840,6 +963,26 @@ class Game {
     setOnBlockMergedListener(listener) {
         this.#listener = listener;
     }
+
+    /**
+     * @returns {void}
+     */
+    clearBoard() {
+        this.#board.clear();
+    }
+
+    /**
+     * @param {number|Point} rowOrPoint 
+     * @param {number|undefined} column
+     */
+    blockAt(rowOrPoint, column = undefined) {
+        if (rowOrPoint instanceof Point) {
+            return this.#board.blockAt(rowOrPoint.row(), rowOrPoint.column());
+        }
+        else {
+            return this.#board.blockAt(rowOrPoint, column ?? 0);
+        }
+    }
     
     /**
      * @returns {boolean}
@@ -849,36 +992,39 @@ class Game {
     }
 
     /**
-     * @param {Block} block 
+     * @param {Block} block
+     * @return {Point|undefined} The spawned location or undefined if there is no empty slot.
      */
     spawnBlock(block) {
         if (!this.isSpawnable() || !block) {
             return;
         }
         
-        const emptySlots = this.#board.getEmptySlots();
+        const emptySlots = [...this.#board.getEmptySlots()];
         const slot = randomItem(emptySlots);
         this.#board.setBlockAt(slot.row(), slot.column(), block);
+        return slot;
     }
     
     /**
-     * @param {Block[]} blocks 
-     * @param {number[]} weights 
+     * @param {Block[]} blocks
+     * @param {number[]} weights
+     * @return {Point|undefined} The spawned location or undefined if there is no empty slot.
      */
     spawnBlockWeighted(blocks, weights) {
         const block = randomItemWeighted(blocks, weights);
-        this.spawnBlock(block);
+        return this.spawnBlock(block);
     }
     
     /**
      * @param {Direction} direction 
-     * @return {boolean}
+     * @return {Map<Point, BlockMove>} The move map
      */
     moveBlocks(direction) {
         const strategy = this.#strategyFactory.create(direction);
         this.#operation.prepare(this.#listener);
         strategy.execute(this.#board, this.#operation);
-        return this.#operation.didMove();
+        return new Map(this.#operation.getMoveMap());
     }
 
     /**
