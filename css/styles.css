@@ -98,28 +98,26 @@ body {
     border: 1px solid black;
 }
 
-.game-block-empty {
-    height: 4em;
-    width: 4em;
+.game-block-empty, .game-block {
+    height: 2.2em;
+    width: 2.2em;
     padding: 0.2em;
-    font-size: 1.3em;
-    background-color: #bca88f;
+    font-size: 2.23em;
     border-radius: 8px;
+}
+
+.game-block-empty {
+    background-color: #bca88f;
 }
 
 .game-block {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 4em;
-    width: 4em;
-    padding: 0.2em;
-    overflow: auto;
+    overflow: wrap;
     word-wrap: break-word;
-    font-size: 1.3em;
     font-weight: bold;
     background-color: #eee4da;
-    border-radius: 8px;
     position: absolute;
     animation: cell-fade-in 200ms ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -146,6 +144,30 @@ body {
 .game-block[data-value="128"] { background-color: #edcf72; color: #f9f6f2; }
 .game-block[data-value="256"] { background-color: #edcc61; color: #f9f6f2; }
 .game-block[data-value="512"] { background-color: #edc850; color: #f9f6f2; }
+
+.game-block[data-value="1024"],
+.game-block[data-value="2048"],
+.game-block[data-value="4096"],
+.game-block[data-value="8192"] {
+    height: 2.5em;
+    width: 2.5em;
+    font-size: 1.95em;
+}
+.game-block[data-value="16384"],
+.game-block[data-value="32768"],
+.game-block[data-value="65536"] {
+    height: 3em;
+    width: 3em;
+    font-size: 1.65em;
+}
+
+.game-block[data-value="131072"] {
+    height: 3.5em;
+    width: 3.5em;
+    font-size: 1.4em;
+    background: linear-gradient(45deg, #360033, #0b8793);
+}
+
 .game-block[data-value="1024"] { background-color: #edc53f; color: #f9f6f2; }
 .game-block[data-value="2048"] { background-color: #edc22e; color: #ffffff; }
 
@@ -166,7 +188,6 @@ body {
 .game-block[data-value="16384"] { background: linear-gradient(45deg, #f3904f, #3b4371); }
 .game-block[data-value="32768"] { background: linear-gradient(45deg, #fc4a1a, #f7b733); }
 .game-block[data-value="65536"] { background: linear-gradient(45deg, #41295a, #2f0743); }
-.game-block[data-value="131072"] { background: linear-gradient(45deg, #360033, #0b8793); }
 
 /* Glow effect for extreme values */
 .game-block[data-value="16384"].merged,
@@ -235,9 +256,9 @@ body {
     }
 
     .game-block, .game-block-empty {
-        height: 3em;
-        width: 3em;
-        font-size: 1.1em;
+        height: 2em;
+        width: 2em;
+        font-size: 2em;
     }
 
     .direction-button {
@@ -262,9 +283,32 @@ body {
     }
 
     .game-block, .game-block-empty {
-        height: 4.5em;
-        width: 4.5em;
-        font-size: 1.5em;
+        height: 2.7em;
+        width: 2.7em;
+        font-size: 2.7em;
+    }
+
+    .game-block[data-value="1024"],
+    .game-block[data-value="2048"],
+    .game-block[data-value="4096"],
+    .game-block[data-value="8192"] {
+        height: 3em;
+        width: 3em;
+        font-size: 2.5em;
+    }
+
+    .game-block[data-value="16384"],
+    .game-block[data-value="32768"],
+    .game-block[data-value="65536"] {
+        height: 3.2em;
+        width: 3.2em;
+        font-size: 2.3em;
+    }
+    
+    .game-block[data-value="131072"] {
+        height: 3.5em;
+        width: 3.5em;
+        font-size: 2.1em;
     }
 
     #game-over {
@@ -312,9 +356,32 @@ body {
     }
 
     .game-block, .game-block-empty {
-        height: 5em;
-        width: 5em;
-        font-size: 1.7em;
+        height: 3em;
+        width: 3em;
+        font-size: 2.8em;
+    }
+
+    .game-block[data-value="1024"],
+    .game-block[data-value="2048"],
+    .game-block[data-value="4096"],
+    .game-block[data-value="8192"] {
+        height: 3.3em;
+        width: 3.3em;
+        font-size: 2.55em;
+    }
+
+    .game-block[data-value="16384"],
+    .game-block[data-value="32768"],
+    .game-block[data-value="65536"] {
+        height: 3.4em;
+        width: 3.4em;
+        font-size: 2.5em;
+    }
+    
+    .game-block[data-value="131072"] {
+        height: 3.5em;
+        width: 3.5em;
+        font-size: 2.4em;
     }
 
     #game-over {
