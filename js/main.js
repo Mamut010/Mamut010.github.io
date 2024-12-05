@@ -170,6 +170,8 @@ const renderScore = () => {
  * @param {number} value 
  */
 const addValueStyle = (cell, value) => {
+    cell.innerText = value;
+
     if (value <= MAX_VALUE_STYLE) {
         cell.dataset.value = value;
     }
@@ -205,7 +207,6 @@ const createNewMovingCell = (point) => {
 
     const value = game.blockAt(point)?.getValue();
     if (value) {
-        cell.innerText = value;
         addValueStyle(cell, value);
     }
 
@@ -241,9 +242,10 @@ const removeTemporaryVisuals = () => {
 
 /**
  * @param {Map<Point, BlockMove>} moves 
- * @param {Point} spawned 
+ * @param {Point} spawned
+ * @param {() => void} onRendered
  */
-const renderGameBoard = (moves, spawned) => {
+const renderGameBoard = (moves, spawned, onRendered) => {
     rendering = true;
     removeTemporaryVisuals();
 
@@ -279,22 +281,25 @@ const renderGameBoard = (moves, spawned) => {
     setTimeout(() => {
         mergeds.forEach(e => {
             e.toCell.remove();
-            e.fromCell.innerText = e.replacedValue;
-            e.fromCell.classList.add('merged');
             addValueStyle(e.fromCell, e.replacedValue);
+            e.fromCell.classList.add('merged');
         });
 
         const spawnedCell = createNewMovingCell(spawned);
         spawnedCell.classList.add('spawned');
+
+        onRendered();
         rendering = false;
     }, BLOCK_TRANSITION_TIME_MS);
 }
 
 const refreshGameOver = () => {
     if (stopped) {
+        gameBoardElement.style.filter = 'brightness(0.8)';
         gameOverElement.style.visibility = 'visible';
     }
     else {
+        gameBoardElement.style.filter = '';
         gameOverElement.style.visibility = 'hidden';
     }
 }
@@ -305,8 +310,7 @@ const refreshGameOver = () => {
  */
 const renderGame = (moves, spawned) => {
     renderScore();
-    renderGameBoard(moves, spawned);
-    refreshGameOver();
+    renderGameBoard(moves, spawned, refreshGameOver);
 }
 
 const initGameBoard = () => {
@@ -336,6 +340,7 @@ const reset = () => {
     removeMovingCells();
     initGameBoard();
     renderInitialGameBoard();
+    refreshGameOver();
     saveStates();
 }
 
