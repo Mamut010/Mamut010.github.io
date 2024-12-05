@@ -145,11 +145,11 @@ body {
     white-space: nowrap;
     opacity: 0;  /* Initially hidden */
     pointer-events: none;  /* Disable interaction when hidden */
-    transition: opacity 0.3s ease; /* Smooth opacity transition */
+    transition: opacity 1s ease; /* Smooth opacity transition */
 }
 
 .game-over-modal-box.show {
-    animation: modal-fade-in 0.3s ease forwards;
+    animation: modal-fade-in 1s ease forwards;
     opacity: 1;
     pointer-events: auto; /* Enable interaction */
 }
