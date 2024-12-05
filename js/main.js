@@ -38,6 +38,10 @@ const boundingRects = new Map();
 /**
  * @type {Map<Point, HTMLElement>}
  */
+const emptyCells = new Map();
+/**
+ * @type {Map<Point, HTMLElement>}
+ */
 const movingCells = new Map();
 /**
  * @type {Point[]}
@@ -62,21 +66,28 @@ const game = (() => {
     return game;
 })();
 
-const readCellPositions = () => {
+const createEmptyCells = () => {
+    const board = game.getBoard();
+    for (let i = 0; i < board.getRowCount(); i++) {
+        for (let j = 0; j < board.getColumnCount(); j++) {
+            const emptyCell = document.createElement('div');
+            emptyCell.classList.add('game-block-empty');
+
+            gameBoardElement.appendChild(emptyCell);
+            emptyCells.set(Point.of(i, j), emptyCell);
+        }
+    }
+}
+
+const readBoundingRects = () => {
     boundingRects.clear();
 
-    for (const child of gameBoardElement.children) {
-        /**
-         * @type {HTMLElement}
-         */
-        const childElement = child;
-        const row = Number.parseInt(childElement.dataset.row);
-        const column = Number.parseInt(childElement.dataset.column);
-        const x = childElement.offsetLeft;
-        const y = childElement.offsetTop;
-        const w = childElement.offsetWidth;
-        const h = childElement.offsetHeight;
-        boundingRects.set(Point.of(row, column), {x, y, w, h});
+    for (const [point, cell] of emptyCells.entries()) {
+        const x = cell.offsetLeft;
+        const y = cell.offsetTop;
+        const w = cell.offsetWidth;
+        const h = cell.offsetHeight;
+        boundingRects.set(point, {x, y, w, h});
     }
 }
 
@@ -446,8 +457,9 @@ const startGame = () => {
     }
     else {
         restoreStates();
-        stopped = isGameOver();
     }
+
+    stopped = isGameOver();
     renderScore();
     renderInitialGameBoard();
     refreshGameOver();
@@ -464,7 +476,7 @@ function closeGameOverModal() {
 }
 
 const handleResize = () => {
-    readCellPositions();
+    readBoundingRects();
     for (const [point, cell] of movingCells.entries()) {
         const rect = boundingRects.get(point);
         cell.style.left = `${rect.x}px`;
@@ -476,7 +488,8 @@ const handleResize = () => {
 };
 
 const init = () => {
-    readCellPositions();
+    createEmptyCells();
+    readBoundingRects();
     const gameBoardResizeObserver = new ResizeObserver((entries) => {
         entries.forEach(_ => handleResize());
     });
