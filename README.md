@@ -1,2 +1,2 @@
 # 2048
-A dead simple pet 2048 game project
+A mini pet 2048 game project
