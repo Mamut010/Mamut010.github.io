@@ -31,11 +31,11 @@ let stopped = false;
 let rendering = false;
 
 /**
- * @type {Map<Point,{x: number, y: number}>}
+ * @type {Map<Point, {x: number, y: number, w: number, h: number}>}
  */
-let positions = new Map();
+const boundingRects = new Map();
 /**
- * @type {Map<Point,HTMLElement>}
+ * @type {Map<Point, HTMLElement>}
  */
 const movingCells = new Map();
 /**
@@ -62,13 +62,20 @@ const game = (() => {
 })();
 
 const readCellPositions = () => {
-    positions.clear();
+    boundingRects.clear();
+
     for (const child of gameBoardElement.children) {
-        const row = Number.parseInt(child.dataset.row);
-        const column = Number.parseInt(child.dataset.column);
-        const x = child.offsetLeft;
-        const y = child.offsetTop;
-        positions.set(Point.of(row, column), {x, y});
+        /**
+         * @type {HTMLElement}
+         */
+        const childElement = child;
+        const row = Number.parseInt(childElement.dataset.row);
+        const column = Number.parseInt(childElement.dataset.column);
+        const x = childElement.offsetLeft;
+        const y = childElement.offsetTop;
+        const w = childElement.offsetWidth;
+        const h = childElement.offsetHeight;
+        boundingRects.set(Point.of(row, column), {x, y, w, h});
     }
 }
 
@@ -163,8 +170,20 @@ const renderScore = () => {
  * @param {number} value 
  */
 const addValueStyle = (cell, value) => {
-    value = Math.min(value, MAX_VALUE_STYLE);
-    cell.dataset.value = value;
+    if (value <= MAX_VALUE_STYLE) {
+        cell.dataset.value = value;
+    }
+    else {
+        cell.dataset.value = MAX_VALUE_STYLE;
+
+        cell.style.fontSize = '';
+        const lengthDiff = value.toString().length - MAX_VALUE_STYLE.toString().length;
+        const scalingFactor = 1.15 ** lengthDiff;
+        const style = getComputedStyle(cell);
+        const maxValueFontSize = parseFloat(style.fontSize);
+        const newFontSize = Math.max(maxValueFontSize / scalingFactor, 12);
+        cell.style.fontSize = `${newFontSize.toFixed(2)}px`;
+    }
 }
 
 /**
@@ -173,17 +192,22 @@ const addValueStyle = (cell, value) => {
  */
 const createNewMovingCell = (point) => {
     const cell = document.createElement('div');
+    cell.classList.add('game-block');
+
+    const rect = boundingRects.get(point);
+    movingCells.set(point, cell);
+    cell.style.left = `${rect.x}px`;
+    cell.style.top = `${rect.y}px`;
+    cell.style.width = `${rect.w}px`;
+    cell.style.height = `${rect.h}px`;
+
+    gameBoardElement.appendChild(cell);
+
     const value = game.blockAt(point)?.getValue();
     if (value) {
         cell.innerText = value;
         addValueStyle(cell, value);
     }
-    cell.classList.add('game-block');
-    
-    const position = positions.get(point);
-    movingCells.set(point, cell);
-    cell.style.left = `${position.x}px`;
-    cell.style.top = `${position.y}px`;
 
     return cell;
 }
@@ -198,8 +222,7 @@ const removeMovingCells = () => {
 const renderInitialGameBoard = () => {
     rendering = true;
     for (const point of game.getBoard().getOccupiedSlots()) {
-        const cell = createNewMovingCell(point);
-        gameBoardElement.appendChild(cell);
+        createNewMovingCell(point);
     }
     mergedPoints.forEach(point => movingCells.get(point)?.classList.add('merged'));
     if (spawnedPoint) {
@@ -234,7 +257,7 @@ const renderGameBoard = (moves, spawned) => {
         const to = move.to();
 
         const cell = movingCells.get(from);
-        const newPosition = positions.get(to);
+        const newPosition = boundingRects.get(to);
 
         cell.style.left = `${newPosition.x}px`;
         cell.style.top = `${newPosition.y}px`;
@@ -263,7 +286,6 @@ const renderGameBoard = (moves, spawned) => {
 
         const spawnedCell = createNewMovingCell(spawned);
         spawnedCell.classList.add('spawned');
-        gameBoardElement.appendChild(spawnedCell);
         rendering = false;
     }, BLOCK_TRANSITION_TIME_MS);
 }
@@ -417,9 +439,12 @@ const startGame = () => {
 const handleResize = () => {
     readCellPositions();
     for (const [point, cell] of movingCells.entries()) {
-        const newPosition = positions.get(point);
-        cell.style.left = `${newPosition.x}px`;
-        cell.style.top = `${newPosition.y}px`;
+        const rect = boundingRects.get(point);
+        cell.style.left = `${rect.x}px`;
+        cell.style.top = `${rect.y}px`;
+        cell.style.width = `${rect.w}px`;
+        cell.style.height = `${rect.h}px`;
+        addValueStyle(cell, game.blockAt(point)?.getValue() ?? 0);
     }
 };
 

@@ -98,30 +98,30 @@ body {
     border: 1px solid black;
 }
 
-.game-block-empty, .game-block {
+.game-block-empty {
     height: 2.2em;
     width: 2.2em;
-    padding: 0.2em;
-    font-size: 2.23em;
-    border-radius: 8px;
+    background-color: #bca88f;
 }
 
-.game-block-empty {
-    background-color: #bca88f;
+.game-block-empty, .game-block {
+    padding: 0.2em;
+    font-size: 2.2em;
+    border-radius: 8px;
 }
 
 .game-block {
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: wrap;
+    overflow: visible;
     word-wrap: break-word;
     font-weight: bold;
     background-color: #eee4da;
     position: absolute;
     animation: cell-fade-in 200ms ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: top 0.2s, left 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
     user-select: none;
 }
 
@@ -145,23 +145,12 @@ body {
 .game-block[data-value="2048"],
 .game-block[data-value="4096"],
 .game-block[data-value="8192"] {
-    height: 2.5em;
-    width: 2.5em;
     font-size: 1.95em;
 }
 .game-block[data-value="16384"],
 .game-block[data-value="32768"],
 .game-block[data-value="65536"] {
-    height: 3em;
-    width: 3em;
-    font-size: 1.65em;
-}
-
-.game-block[data-value="131072"] {
-    height: 3.5em;
-    width: 3.5em;
-    font-size: 1.4em;
-    background: linear-gradient(45deg, #360033, #0b8793);
+    font-size: 1.6em;
 }
 
 .game-block[data-value="1024"] { background-color: #edc53f; color: #f9f6f2; }
@@ -178,6 +167,11 @@ body {
     color: #ffffff;
     box-shadow: 0 0 30px rgba(255, 255, 255, 0.6);
     text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.game-block[data-value="131072"] {
+    font-size: 1.35em;
+    background: linear-gradient(45deg, #360033, #0b8793);
 }
 
 /* Darker effect for larger numbers */
@@ -252,8 +246,6 @@ body {
     }
 
     .game-block, .game-block-empty {
-        height: 2em;
-        width: 2em;
         font-size: 2em;
     }
 
@@ -279,31 +271,23 @@ body {
     }
 
     .game-block, .game-block-empty {
-        height: 2.7em;
-        width: 2.7em;
-        font-size: 2.7em;
+        font-size: 3.4em;
     }
 
     .game-block[data-value="1024"],
     .game-block[data-value="2048"],
     .game-block[data-value="4096"],
     .game-block[data-value="8192"] {
-        height: 3em;
-        width: 3em;
-        font-size: 2.5em;
+        font-size: 3em;
     }
 
     .game-block[data-value="16384"],
     .game-block[data-value="32768"],
     .game-block[data-value="65536"] {
-        height: 3.2em;
-        width: 3.2em;
-        font-size: 2.3em;
+        font-size: 2.5em;
     }
     
     .game-block[data-value="131072"] {
-        height: 3.5em;
-        width: 3.5em;
         font-size: 2.1em;
     }
 
@@ -351,33 +335,30 @@ body {
         gap: 1.2em;
     }
 
+    .game-block-empty {
+        height: 2.8em;
+        width: 2.8em;
+    }
+
     .game-block, .game-block-empty {
-        height: 3em;
-        width: 3em;
-        font-size: 2.8em;
+        font-size: 3em;
     }
 
     .game-block[data-value="1024"],
     .game-block[data-value="2048"],
     .game-block[data-value="4096"],
     .game-block[data-value="8192"] {
-        height: 3.3em;
-        width: 3.3em;
-        font-size: 2.55em;
+        font-size: 3.3em;
     }
 
     .game-block[data-value="16384"],
     .game-block[data-value="32768"],
     .game-block[data-value="65536"] {
-        height: 3.4em;
-        width: 3.4em;
-        font-size: 2.5em;
+        font-size: 2.7em;
     }
     
     .game-block[data-value="131072"] {
-        height: 3.5em;
-        width: 3.5em;
-        font-size: 2.4em;
+        font-size: 2.3em;
     }
 
     #game-over {
