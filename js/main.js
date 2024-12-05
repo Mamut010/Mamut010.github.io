@@ -81,6 +81,11 @@ const readCellPositions = () => {
 }
 
 const setState = (key, state) => {
+    if (typeof state === 'undefined' || (Array.isArray(state) && state.length === 0)) {
+        localStorage.removeItem(key);
+        return;
+    }
+
     if (typeof state !== 'string') {
         state = JSON.stringify(state);
     }
@@ -126,8 +131,8 @@ const restoreStates = () => {
 }
 
 const hasSavedStates = () => {
-    const stateKeys = [SCORE_STATE_KEY, BOARD_STATE_KEY, MERGEDS_STATE_KEY, SPAWNED_STATE_KEY];
-    return stateKeys.every(key => getState(key) !== null);
+    const importantKeys = [BOARD_STATE_KEY];
+    return importantKeys.every(key => getState(key) !== null);
 }
 
 const renderScore = () => {
@@ -336,6 +341,7 @@ const resetStates = () => {
     score = 0;
     stopped = false;
     mergedPoints.length = 0;
+    spawnedPoint = undefined;
     removeMovingCells();
 }
 
