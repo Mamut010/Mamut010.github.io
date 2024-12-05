@@ -23,7 +23,8 @@ const MAX_VALUE_STYLE = 1 << 17;
 
 const scoreElement = document.getElementById('score');
 const gameBoardElement = document.getElementById('game-board');
-const gameOverElement = document.getElementById('game-over');
+const gameOverModalBoxElement = document.getElementById('game-over-modal-box');
+const gameOverModelOverlay = document.getElementById('game-over-modal-overlay');
 const supportDirectionButtons = document.getElementById('support-direction-buttons');
 
 let score = 0;
@@ -295,12 +296,10 @@ const renderGameBoard = (moves, spawned, onRendered) => {
 
 const refreshGameOver = () => {
     if (stopped) {
-        gameBoardElement.style.filter = 'brightness(0.8)';
-        gameOverElement.style.visibility = 'visible';
+        openGameOverModal();
     }
     else {
-        gameBoardElement.style.filter = '';
-        gameOverElement.style.visibility = 'hidden';
+        closeGameOverModal();
     }
 }
 
@@ -332,13 +331,18 @@ const isGameOver = () => {
     return true;
 }
 
-const reset = () => {
+const resetStates = () => {
     game.clearBoard();
     score = 0;
     stopped = false;
     mergedPoints.length = 0;
     removeMovingCells();
+}
+
+const reset = () => {
+    resetStates();
     initGameBoard();
+    stopped = isGameOver();
     renderInitialGameBoard();
     refreshGameOver();
     saveStates();
@@ -440,6 +444,16 @@ const startGame = () => {
     renderInitialGameBoard();
     refreshGameOver();
 };
+
+function openGameOverModal() {
+    gameOverModalBoxElement.classList.add('show');
+    gameOverModelOverlay.classList.add('show');
+}
+  
+function closeGameOverModal() {
+    gameOverModalBoxElement.classList.remove('show');
+    gameOverModelOverlay.classList.remove('show');
+}
 
 const handleResize = () => {
     readCellPositions();

@@ -1,6 +1,5 @@
 body {
     font-family: "clear sans", "helvetica neue", Arial, sans-serif;
-    background-color: #e6e6e6;
 }
 
 @keyframes fade-in {
@@ -28,6 +27,17 @@ body {
     }
     100% { 
         box-shadow: 0 0 40px rgba(255, 255, 255, 1);
+    }
+}
+
+@keyframes modal-fade-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -60%);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%);
     }
 }
 
@@ -97,11 +107,64 @@ body {
 #game-board {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    place-items: center;
     padding: 0.8em;
     gap: 0.8em;
     background-color: #d7bfa8;
     border-radius: 15px;
     position: relative;
+}
+
+.game-over-modal-box {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    background:
+        linear-gradient(217deg, rgb(255 0 0 / 80%), rgb(255 0 0 / 20%) 70.71%),
+        linear-gradient(127deg, rgb(0 255 0 / 80%), rgb(0 255 0 / 20%) 70.71%),
+        linear-gradient(336deg, rgb(0 0 255 / 80%), rgb(0 0 255 / 20%) 70.71%);
+    color: rgb(251, 255, 0);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    border-radius: 4px;
+    padding: 1em 1em;
+    font-size: 1.4em;
+    overflow: auto;
+    white-space: nowrap;
+    opacity: 0;  /* Initially hidden */
+    pointer-events: none;  /* Disable interaction when hidden */
+    transition: opacity 0.3s ease; /* Smooth opacity transition */
+}
+
+.game-over-modal-box.show {
+    animation: modal-fade-in 0.3s ease forwards;
+    opacity: 1;
+    pointer-events: auto; /* Enable interaction */
+}
+
+.game-over-modal-box > span {
+    font-weight: bold;
+    text-shadow: 1px 1px 1px black;
+}
+
+.game-over-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.2);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.game-over-modal-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 #game-board, .game-block {
@@ -197,12 +260,6 @@ body {
     animation: glow 1.5s infinite alternate;
 }
 
-#game-over {
-    visibility: hidden;
-    font-size: 120%;
-    color: red;
-}
-
 #reset-button, #toggle-direction-button {
     min-height: 5em;
     min-width: 10em;
@@ -211,10 +268,11 @@ body {
 
 #support-direction-buttons {
     display: none;
-    margin-bottom: 5%;
+    margin-top: 10%;
 }
 
 .control-buttons-container {
+    margin-top: 10%;
     display: flex;
     flex-direction: row;
     justify-content: space-evenly;
@@ -250,6 +308,11 @@ body {
         gap: 0.6em;
     }
 
+    .game-over-modal-box {
+        padding: 0.8em 0.8em;
+        font-size: 1.2em;
+    }
+
     .game-block, .game-block-empty {
         font-size: 2em;
     }
@@ -275,6 +338,11 @@ body {
         gap: 1.1em;
     }
 
+    .game-over-modal-box {
+        padding: 1em 1em;
+        font-size: 2.1em;
+    }
+
     .game-block, .game-block-empty {
         font-size: 3.4em;
     }
@@ -294,10 +362,6 @@ body {
     
     .game-block[data-value="131072"] {
         font-size: 2.1em;
-    }
-
-    #game-over {
-        font-size: 160%;
     }
 
     .direction-button {
@@ -340,6 +404,11 @@ body {
         gap: 1.2em;
     }
 
+    .game-over-modal-box {
+        padding: 1em 1em;
+        font-size: 2.4em;
+    }
+
     .game-block-empty {
         height: 2.8em;
         width: 2.8em;
@@ -366,11 +435,11 @@ body {
         font-size: 2.3em;
     }
 
-    #game-over {
-        font-size: 200%;
-    }
-
     #toggle-direction-button {
         display: none;
+    }
+
+    .control-buttons-container {
+        margin-top: 5%;
     }
 }
