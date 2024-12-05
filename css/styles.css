@@ -125,10 +125,6 @@ body {
     user-select: none;
 }
 
-.game-block.merged {
-    border: 3px solid rgb(241, 137, 10);
-}
-
 .game-block.spawned {
     transform: scale(1.1);
     box-shadow: 1px 1px 1px black, -1px 1px 1px black, 1px -1px 8px black, -1px -1px 1px black;
