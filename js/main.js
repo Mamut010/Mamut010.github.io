@@ -414,37 +414,13 @@ const startGame = () => {
     refreshGameOver();
 };
 
-let resizeTimeout;
 const handleResize = () => {
-    rendering = true;
     readCellPositions();
-
-    /**
-     * @type {{cell: HTMLElement, transition: string}[]}
-     */
-    const transitions = [];
     for (const [point, cell] of movingCells.entries()) {
-        transitions.push({
-            cell,
-            transition: cell.style.transition
-        });
-
-        // Disable transition while resizing
-        cell.style.transition = 'none';
-
-        // Clear the previous timeout to prevent multiple triggers
-        clearTimeout(resizeTimeout);
-
         const newPosition = positions.get(point);
         cell.style.left = `${newPosition.x}px`;
         cell.style.top = `${newPosition.y}px`;
     }
-
-    // Re-enable transition after resizing completes
-    resizeTimeout = setTimeout(() => {
-        transitions.forEach(e => e.cell.style.transition = e.transition);
-        rendering = false;
-    }, BLOCK_TRANSITION_TIME_MS);
 };
 
 const init = () => {
