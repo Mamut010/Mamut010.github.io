@@ -286,6 +286,7 @@ const renderGameBoard = (moves, spawned, onRendered) => {
     spawnedPoint = spawned;
     setTimeout(() => {
         mergeds.forEach(e => {
+            e.toCell.style.transform = 'none';
             e.toCell.remove();
             addValueStyle(e.fromCell, e.replacedValue);
             e.fromCell.classList.add('merged');

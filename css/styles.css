@@ -41,6 +41,15 @@ body {
     }
 }
 
+@keyframes glow-spawned-cell {
+    from {
+        box-shadow: 1px 1px 1px black, -1px 1px 1px black, 1px -1px 1px black, -1px -1px 1px black;
+    }
+    to {
+        box-shadow: 1px 1px 1px black, -1px 1px 1px black, 1px -1px 8px black, -1px -1px 1px black;
+    }
+}
+
 .page-container {
     padding: 1%;
     display: flex;
@@ -192,15 +201,17 @@ body {
     font-weight: bold;
     background-color: #eee4da;
     position: absolute;
-    animation: fade-in 400ms ease;
+    animation: fade-in 500ms ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, scale 0.5s, background-color 0.2s ease, box-shadow 0.2s ease;
     user-select: none;
 }
 
 .game-block.spawned {
     transform: scale(1.1);
-    box-shadow: 1px 1px 1px black, -1px 1px 1px black, 1px -1px 8px black, -1px -1px 1px black;
+    -webkit-animation: glow-spawned-cell 1.5s infinite alternate linear;
+    -moz-animation: glow-spawned-cell 1.5s infinite alternate linear;
+    animation: glow-spawned-cell 1.5s infinite alternate linear;
 }
 
 /* Base styles for smaller values */
@@ -257,6 +268,8 @@ body {
 .game-block[data-value="32768"].merged,
 .game-block[data-value="65536"].merged,
 .game-block[data-value="131072"].merged {
+    -webkit-animation: glow 1.5s infinite alternate;
+    -moz-animation: glow 1.5s infinite alternate;
     animation: glow 1.5s infinite alternate;
 }
 
