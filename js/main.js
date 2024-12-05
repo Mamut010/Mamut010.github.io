@@ -399,58 +399,6 @@ const moveDown = moveInDirection(Direction.DOWN);
 const moveLeft = moveInDirection(Direction.LEFT);
 const moveRight = moveInDirection(Direction.RIGHT);
 
-document.addEventListener('keydown', (e) => {
-    switch (e.key) {
-        case 'ArrowUp':
-            e.preventDefault();
-            moveUp();
-            break;
-        case 'ArrowDown':
-            e.preventDefault();
-            moveDown();
-            break;
-        case 'ArrowLeft':
-            e.preventDefault();
-            moveLeft();
-            break;
-        case 'ArrowRight':
-            e.preventDefault();
-            moveRight();
-            break;
-    }
-});
-
-SwipeListener(gameBoardElement, {
-    minHorizontal: 20,
-    minVertical: 20,
-    preventScroll: true,
-    lockAxis: true,
-    mouse: false,
-    touch: true,
-});
-gameBoardElement.addEventListener('swipe', (e) => {
-    const directions = e.detail.directions;
-    if (directions.top) {
-        e.preventDefault();
-        moveUp();
-    }
-    if (directions.bottom) {
-        e.preventDefault();
-        moveDown();
-    }
-    if (directions.left) {
-        e.preventDefault();
-        moveLeft();
-    }
-    if (directions.right) {
-        e.preventDefault();
-        moveRight();
-    }
-});
-
-document.getElementById('reset-button')?.addEventListener('click', reset);
-document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
-
 const startGame = () => {
     if (!hasSavedStates()) {
         initGameBoard();
@@ -487,6 +435,60 @@ const handleResize = () => {
     }
 };
 
+const bindListeners = () => {
+    document.addEventListener('keydown', (e) => {
+        switch (e.key) {
+            case 'ArrowUp':
+                e.preventDefault();
+                moveUp();
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                moveDown();
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                moveLeft();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                moveRight();
+                break;
+        }
+    });
+    
+    SwipeListener(gameBoardElement, {
+        minHorizontal: 20,
+        minVertical: 20,
+        preventScroll: true,
+        lockAxis: true,
+        mouse: false,
+        touch: true,
+    });
+    gameBoardElement.addEventListener('swipe', (e) => {
+        const directions = e.detail.directions;
+        if (directions.top) {
+            e.preventDefault();
+            moveUp();
+        }
+        if (directions.bottom) {
+            e.preventDefault();
+            moveDown();
+        }
+        if (directions.left) {
+            e.preventDefault();
+            moveLeft();
+        }
+        if (directions.right) {
+            e.preventDefault();
+            moveRight();
+        }
+    });
+    
+    document.getElementById('reset-button')?.addEventListener('click', reset);
+    document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
+}
+
 const init = () => {
     createEmptyCells();
     readBoundingRects();
@@ -494,6 +496,8 @@ const init = () => {
         entries.forEach(_ => handleResize());
     });
     gameBoardResizeObserver.observe(gameBoardElement);
+
+    bindListeners();
 }
 
 init();
