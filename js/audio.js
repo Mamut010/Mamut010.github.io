@@ -37,7 +37,7 @@ class AudioPlayer {
     /**
      * @type {number|undefined}
      */
-    #previousVolume = 1;
+    #beforeFadeOutVolume = 1;
 
     /**
      * @type {Map<string, ((audio: AudioPlayer) => void)[]>}
@@ -439,15 +439,25 @@ class AudioPlayer {
         }
 
         fadeVolume = boundValue(fadeVolume, AudioPlayer.MIN_FADE_VOLUME, AudioPlayer.MAX_VOLUME);
-        this.#previousVolume = this.getVolume();
+        this.#beforeFadeOutVolume = this.getVolume();
+
+        let previousVolume = this.#beforeFadeOutVolume;
 
         this.#fadingIntervalId = setInterval(() => {
-            if (this.#audio.volume > fadeVolume) {
-                this.#audio.volume -= fadeVolume;
-            } 
-            else {
+            if (this.#audio.volume <= fadeVolume) {
                 this.#endFadeOut();
                 this.stop();
+                return;
+            } 
+
+            this.#audio.volume -= fadeVolume;
+            // Some browser do not allow direct change to audio volume
+            if (previousVolume === this.#audio.volume) {
+                this.#endFadeOut();
+                this.stop();
+            }
+            else {
+                previousVolume = this.#audio.volume;
             }
         }, fadeIntervalMs);
         return this;
@@ -456,7 +466,7 @@ class AudioPlayer {
     #endFadeOut() {
         clearInterval(this.#fadingIntervalId);
         this.#fadingIntervalId = undefined;
-        this.setVolume(this.#previousVolume);
+        this.setVolume(this.#beforeFadeOutVolume);
     }
 
     #createAudio() {
