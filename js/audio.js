@@ -214,18 +214,22 @@ class AudioPlayer {
         const idx = entries.findIndex(entry => entry.listener === listener);
         if (idx >= 0) {
             entries.splice(idx, 1);
-            if (entries.length === 0) {
-                this.#eventListeners.delete(event);
-            }
         }
         return this;
     }
 
     /**
+     * @param {'play'|'resume'|'pause'|'stop'|('play'|'resume'|'pause'|'stop')[]|undefined} event
      * @return {this}
      */
-    removeEventListeners() {
-        this.#eventListeners.clear();
+    removeEventListeners(event = undefined) {
+        if (typeof event === 'undefined') {
+            this.#eventListeners.clear();
+            return this;
+        }
+
+        const events = asArray(event);
+        events.forEach(e => this.#eventListeners.delete(e));
         return this;
     }
 
@@ -546,7 +550,7 @@ class AudioPlayer {
      */
     #notifyListeners(eventType) {
         const entries = this.#eventListeners.get(eventType);
-        if (!entries) {
+        if (!entries || entries.length === 0) {
             return;
         }
 
@@ -566,13 +570,7 @@ class AudioPlayer {
             return;
         }
 
-        const newEntries = entries.filter((_, index) => !removedIndices.has(index));
-        if (newEntries.length === 0) {
-            this.#eventListeners.delete(eventType);
-        }
-        else {
-            this.#eventListeners.set(eventType, newEntries);
-        }
+        removeIndices(entries, removedIndices);
     }
 }
 

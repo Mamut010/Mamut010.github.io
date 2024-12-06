@@ -133,3 +133,29 @@ const boundValue = (value, bound, nextBound = 0) => {
         return value;
     }
 }
+
+/**
+ * @param {any[]} array 
+ * @param {Iterable<number>} removedIndices 
+ * @param {boolean} inplace 
+ * @returns {any[]}
+ */
+const removeIndices = (array, removedIndices, inplace = true) => {
+    const indices = removedIndices instanceof Set ? removedIndices : new Set(removedIndices);
+    const resultArray = inplace ? array : [...array];
+    
+    // Use a write pointer to overwrite elements
+    let writePointer = 0;
+
+    for (let readPointer = 0; readPointer < resultArray.length; readPointer++) {
+        // Copy element only if it's not in the indicesSet
+        if (!indices.has(readPointer)) {
+            resultArray[writePointer] = resultArray[readPointer];
+            writePointer++;
+        }
+    }
+
+    // Truncate the array to the new size
+    resultArray.length = writePointer;
+    return resultArray;
+}
