@@ -1,6 +1,6 @@
 'use strict';
 
-const BOARD_ROW_COUNT = 4;
+const BOARD_ROW_COUNT = 1;
 const BOARD_COLUMN_COUNT = 4;
 const INITIAL_BLOCK_COUNT = 2;
 const SPAWNED_BLOCKS = [Block.of(2), Block.of(4)];
@@ -327,7 +327,12 @@ const refreshGameOver = () => {
  */
 const renderGame = (moves, spawned) => {
     renderScore();
-    renderGameBoard(moves, spawned, refreshGameOver);
+    renderGameBoard(moves, spawned, () => {
+        refreshGameOver();
+        if (stopped) {
+            gameOverSfx.play();
+        }
+    });
 }
 
 const initGameBoard = () => {
@@ -435,6 +440,18 @@ const handleResize = () => {
     }
 };
 
+const createBgm = (sources) => new AudioHandler()
+    .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
+    .setShuffle(true)
+    .setLooping(true);
+
+const createSfx = (sources) => new AudioHandler()
+    .setSources((sources ?? []).map(src => `audio\\sfx\\${src}`))
+    .setShuffle(true);
+
+const backgroundMusic = createBgm(AudioSources.background);
+const gameOverSfx = createSfx(AudioSources.gameOver);
+
 const bindListeners = () => {
     document.addEventListener('keydown', (e) => {
         switch (e.key) {
@@ -487,11 +504,21 @@ const bindListeners = () => {
     
     document.getElementById('reset-button')?.addEventListener('click', reset);
     document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
+    document.getElementById('initial-pop-up')?.addEventListener('click', (e) => {
+        backgroundMusic.play();
+        if (e.target instanceof Element) {
+            e.target.remove();
+        }
+    });
+    document.getElementById('next-bgm-button')?.addEventListener('click', () => backgroundMusic.playNext());
 }
 
-const init = () => {
+const initUi = () => {
     createEmptyCells();
     readBoundingRects();
+}
+
+const initListeners = () => {
     const gameBoardResizeObserver = new ResizeObserver((entries) => {
         entries.forEach(_ => handleResize());
     });
@@ -500,5 +527,6 @@ const init = () => {
     bindListeners();
 }
 
-init();
+initUi();
+initListeners();
 startGame();

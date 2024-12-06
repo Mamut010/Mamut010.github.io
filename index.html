@@ -11,9 +11,15 @@
         <script defer src="./js/swipe-listener.min.js"></script>
         <script defer src="./js/utils.js"></script>
         <script defer src="./js/2048.js"></script>
+        <script defer src="./js/audio-handler.js"></script>
+        <script defer src="./js/audio-sources.js"></script>
         <script defer src="./js/main.js"></script>
     </head>
     <body>
+        <div id="initial-pop-up">
+            <div class="message">Click anywhere to play</div>
+        </div>
+
         <div class="page-container">
             <h1 class="glow-title" id="game-title">2048</h1>
             <div class="direction-buttons-container">
@@ -58,6 +64,7 @@
                 <button class="control-button toggle-directions-button" id="toggle-direction-button" type="button">
                     TOGGLE DIRECTIONS
                 </button>
+                <button class="control-button next-bgm-button" id="next-bgm-button">NEXT BGM</button>
             </div>
         </div>
     </body>
