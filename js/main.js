@@ -440,12 +440,12 @@ const handleResize = () => {
     }
 };
 
-const createBgm = (sources) => new AudioHandler()
+const createBgm = (sources) => new AudioPlayer()
     .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
     .setShuffle(true)
     .setLooping(true);
 
-const createSfx = (sources) => new AudioHandler()
+const createSfx = (sources) => new AudioPlayer()
     .setSources((sources ?? []).map(src => `audio\\sfx\\${src}`))
     .setShuffle(true);
 
@@ -510,7 +510,14 @@ const bindListeners = () => {
             e.target.remove();
         }
     });
-    document.getElementById('next-bgm-button')?.addEventListener('click', () => backgroundMusic.playNext());
+    document.getElementById('next-bgm-button')?.addEventListener('click', () => {
+        const playNext = () => {
+            backgroundMusic.play();
+            backgroundMusic.removeEventListener('stop', playNext);
+        };
+        backgroundMusic.addEventListener('stop', playNext);
+        backgroundMusic.stopFadeOut();
+    });
 }
 
 const initUi = () => {

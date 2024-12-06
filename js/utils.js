@@ -13,8 +13,9 @@ const randomItem = (items) => {
 }
 
 /**
- * @param {any[]} items 
- * @returns {number}
+ * Randomly select an index within the given array
+ * @param {any[]} items The array of items
+ * @returns {number} The randomly selected index or -1 if the array is empty
  */
 const randomIdx = (items) => {
     if (items.length === 0) {
@@ -96,15 +97,39 @@ const shuffle = (array, newInstance = false) => {
 }
 
 /**
- * @param {any[]} array 
- * @returns {any[]}
+ * Return the value or the lower bound if the value is lower than the bound
+ * @param {number} value The value
+ * @param {number} lowerBound The lower bound
+ * @returns The value or the lower bound if the value is lower than the bound
  */
-const clearOrNewArray = (array) => {
-    if (!array) {
-        return [];
+const lowerBoundValue = (value, lowerBound) => Math.max(value, lowerBound);
+
+/**
+ * Return the value or the upper bound if the value is higher than the bound
+ * @param {number} value The value
+ * @param {number} upperBound The upper bound
+ * @returns The value or the upper bound if the value is higher than the bound
+ */
+const upperBoundValue = (value, upperBound) => Math.min(value, upperBound);
+
+/**
+ * Return the value or the bound if the value exceeds the bound.
+ * @param {number} value The value
+ * @param {number} bound The first bound
+ * @param {number} nextBound [optional] The next bound, defaulted to 0
+ * @returns {number} The value or the bound if the value exceeds the bound
+ */
+const boundValue = (value, bound, nextBound = 0) => {
+    const lowerBound = Math.min(bound, nextBound);
+    const upperBound = Math.max(bound, nextBound);
+
+    if (value < lowerBound) {
+        return lowerBound;
     }
-    else  {
-        array.length = 0;
-        return array;
+    else if (value > upperBound) {
+        return upperBound;
+    }
+    else {
+        return value;
     }
 }
