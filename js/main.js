@@ -61,6 +61,7 @@ const createBgm = (sources) => new AudioPlayer()
     .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
     .setShuffle(true)
     .setVolume(0.5)
+    .setMuted(true)
     .setLooping(true);
 
 const createSfx = (sources) => new AudioPlayer()
