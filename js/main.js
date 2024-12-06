@@ -333,12 +333,20 @@ const renderGameBoard = (moves, spawned, onRendered) => {
 
     spawnedPoint = spawned;
     setTimeout(() => {
+        const mergedCells = [];
+
         mergeds.forEach(e => {
             e.toCell.style.transform = 'none';
             e.toCell.remove();
             addValueStyle(e.fromCell, e.replacedValue);
             e.fromCell.classList.add('merged');
+            e.fromCell.style.transform = 'scale(1.2)';
+            mergedCells.push(e.fromCell);
         });
+
+        if (mergedCells.length !== 0) {
+            setTimeout(() => mergedCells.forEach(cell => cell.style.transform = ''), 100);
+        }
 
         const spawnedCell = createNewMovingCell(spawned);
         spawnedCell.classList.add('spawned');
