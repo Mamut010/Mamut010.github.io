@@ -43,10 +43,10 @@ body {
 
 @keyframes glow-spawned-cell {
     from {
-        box-shadow: none;
+        box-shadow: 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.5);
     }
     to {
-        box-shadow: 1px 1px 1px black, -1px 1px 1px black, 1px -1px 8px black, -1px -1px 1px black;
+        box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.5), 0 8px 12px rgba(0, 0, 0, 0.5);
     }
 }
 
@@ -201,10 +201,6 @@ body {
     pointer-events: auto;
 }
 
-#game-board, .game-block {
-    border: 1px solid black;
-}
-
 .game-block-empty {
     height: 2.2em;
     width: 2.2em;
@@ -227,7 +223,7 @@ body {
     background-color: #eee4da;
     position: absolute;
     animation: fade-in 0.5s ease;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
     transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, scale 0.5s, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
