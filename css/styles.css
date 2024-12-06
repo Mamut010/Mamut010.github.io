@@ -224,7 +224,7 @@ body {
     position: absolute;
     animation: fade-in 0.5s ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
-    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, scale 0.5s, background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, transform 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .game-block.spawned {

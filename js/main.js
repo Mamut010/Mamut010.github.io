@@ -345,7 +345,7 @@ const renderGameBoard = (moves, spawned, onRendered) => {
         });
 
         if (mergedCells.length !== 0) {
-            setTimeout(() => mergedCells.forEach(cell => cell.style.transform = ''), 100);
+            setTimeout(() => mergedCells.forEach(cell => cell.style.transform = ''), Math.round(BLOCK_TRANSITION_TIME_MS / 2));
         }
 
         const spawnedCell = createNewMovingCell(spawned);
