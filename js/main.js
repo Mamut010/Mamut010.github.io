@@ -1,6 +1,6 @@
 'use strict';
 
-const BOARD_ROW_COUNT = 1;
+const BOARD_ROW_COUNT = 4;
 const BOARD_COLUMN_COUNT = 4;
 const INITIAL_BLOCK_COUNT = 2;
 const SPAWNED_BLOCKS = [Block.of(2), Block.of(4)];
