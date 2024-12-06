@@ -10,6 +10,8 @@ const BOARD_STATE_KEY = 'board';
 const SCORE_STATE_KEY = 'score';
 const MERGEDS_STATE_KEY = 'mergeds';
 const SPAWNED_STATE_KEY = 'spawned';
+const VOLUME_STATE_KEY = 'volume';
+const MUTED_STATE_KEY = 'muted';
 
 const BLOCK_TRANSITION_TIME_MS = 200;
 const START_SCORE_COLOR = '#000000';
@@ -26,6 +28,9 @@ const gameBoardElement = document.getElementById('game-board');
 const gameOverModalBoxElement = document.getElementById('game-over-modal-box');
 const gameOverModelOverlay = document.getElementById('game-over-modal-overlay');
 const supportDirectionButtons = document.getElementById('support-direction-buttons');
+const muteButton = document.getElementById('mute-button');
+const volumeSlider = document.getElementById('volume-slider');
+const volumeTooltip = document.getElementById('volume-tooltip');
 
 let score = 0;
 let stopped = false;
@@ -51,6 +56,20 @@ const mergedPoints = [];
  * @type {Point|undefined}
  */
 let spawnedPoint;
+
+const createBgm = (sources) => new AudioPlayer()
+    .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
+    .setShuffle(true)
+    .setVolume(0.5)
+    .setLooping(true);
+
+const createSfx = (sources) => new AudioPlayer()
+    .setSources((sources ?? []).map(src => `audio\\sfx\\${src}`))
+    .setVolume(0.5)
+    .setShuffle(true);
+
+const backgroundMusic = createBgm(AudioSources.background);
+const gameOverSfx = createSfx(AudioSources.gameOver);
 
 const game = (() => {
     const board = new Board(BOARD_ROW_COUNT, BOARD_COLUMN_COUNT);
@@ -107,14 +126,19 @@ const getState = (key) => {
     return localStorage.getItem(key);
 }
 
-const saveStates = () => {
+const saveGameStates = () => {
     setState(SCORE_STATE_KEY, score);
     setState(BOARD_STATE_KEY, game.getBoard().toJson());
     setState(MERGEDS_STATE_KEY, mergedPoints.map(point => point.toString()));
     setState(SPAWNED_STATE_KEY, spawnedPoint?.toString());
 }
 
-const restoreStates = () => {
+const saveAudioStates = () => {
+    setState(VOLUME_STATE_KEY, backgroundMusic.getVolume());
+    setState(MUTED_STATE_KEY, backgroundMusic.isMuted());
+}
+
+const restoreGameStates = () => {
     score = Number(getState(SCORE_STATE_KEY) ?? '0');
 
     const savedBoardState = getState(BOARD_STATE_KEY);
@@ -141,7 +165,19 @@ const restoreStates = () => {
     }
 }
 
-const hasSavedStates = () => {
+const restoreAudioStates = () => {
+    const savedVolumeState = getState(VOLUME_STATE_KEY);
+    if (savedVolumeState) {
+        backgroundMusic.setVolume(Number(savedVolumeState));
+    }
+    
+    const savedMutedState = getState(MUTED_STATE_KEY);
+    if (savedMutedState) {
+        backgroundMusic.setMuted(savedMutedState === 'true');
+    }
+}
+
+const hasGameSavedStates = () => {
     const importantKeys = [BOARD_STATE_KEY];
     return importantKeys.every(key => getState(key) !== null);
 }
@@ -370,7 +406,7 @@ const reset = () => {
     renderInitialGameBoard();
     renderScore();
     refreshGameOver();
-    saveStates();
+    saveGameStates();
 }
 
 const toggleDirectionButtons = () => {
@@ -397,7 +433,7 @@ const moveInDirection = (direction) => {
 
         stopped = isGameOver();
         renderGame(moves, spawned);
-        saveStates();
+        saveGameStates();
     }
 }
 const moveUp = moveInDirection(Direction.UP);
@@ -406,11 +442,11 @@ const moveLeft = moveInDirection(Direction.LEFT);
 const moveRight = moveInDirection(Direction.RIGHT);
 
 const startGame = () => {
-    if (!hasSavedStates()) {
+    if (!hasGameSavedStates()) {
         initGameBoard();
     }
     else {
-        restoreStates();
+        restoreGameStates();
     }
 
     stopped = isGameOver();
@@ -441,17 +477,33 @@ const handleResize = () => {
     }
 };
 
-const createBgm = (sources) => new AudioPlayer()
-    .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
-    .setShuffle(true)
-    .setLooping(true);
+function getVolumePercentage() {
+    return Math.round(backgroundMusic.getVolume() * 100);
+}
 
-const createSfx = (sources) => new AudioPlayer()
-    .setSources((sources ?? []).map(src => `audio\\sfx\\${src}`))
-    .setShuffle(true);
+/**
+ * @param {number|undefined} percentage 
+ */
+function updateSliderBackground(percentage = undefined) {
+    percentage ??= getVolumePercentage();
+    let background;
+    if (backgroundMusic.isFadingOut()) {
+        background = `linear-gradient(to right, rgba(85, 85, 85, 0.2) ${percentage}%, rgba(221, 221, 221, 0.2) ${percentage}%)`;
+    }
+    else {
+        background = `linear-gradient(to right, #555 ${percentage}%, #ddd ${percentage}%)`;
+    }
+    volumeSlider.style.background = background;
+}
 
-const backgroundMusic = createBgm(AudioSources.background);
-const gameOverSfx = createSfx(AudioSources.gameOver);
+function updateAudioProgress() {
+    const percentage = getVolumePercentage();
+    volumeSlider.value = backgroundMusic.isMuted() ? 0 : percentage;
+    updateSliderBackground(percentage);
+    volumeTooltip.textContent = `${percentage}%`;
+    volumeTooltip.style.left = `${percentage}%`;
+    muteButton.textContent = backgroundMusic.isMuted() ? '🔇' : '🔊';
+}
 
 const bindListeners = () => {
     document.addEventListener('keydown', (e) => {
@@ -505,25 +557,58 @@ const bindListeners = () => {
     
     document.getElementById('reset-button')?.addEventListener('click', reset);
     document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
-    document.getElementById('initial-pop-up')?.addEventListener('click', (e) => {
+
+    const initialPopUpElement = document.getElementById('initial-pop-up');
+    initialPopUpElement?.addEventListener('click', (e) => {
         backgroundMusic.play();
-        if (e.target instanceof Element) {
-            e.target.remove();
-        }
+        initialPopUpElement.remove();
     });
+
     document.getElementById('next-bgm-button')?.addEventListener('click', () => {
         const playNext = () => {
             backgroundMusic.play();
             backgroundMusic.removeEventListener('stop', playNext);
+
+            volumeSlider.disabled = false;
+            volumeSlider.style.cursor = 'pointer';
+            updateSliderBackground();
         };
+
         backgroundMusic.addEventListener('stop', playNext);
         backgroundMusic.stopFadeOut();
+
+        volumeSlider.disabled = true;
+        volumeSlider.style.cursor = 'not-allowed';
+        updateSliderBackground();
+    });
+
+    // Mute/unmute functionality
+    muteButton.addEventListener('click', () => {
+        backgroundMusic.toggleMuted();
+        updateAudioProgress();
+        saveAudioStates();
+    });
+
+    // Update tooltip and apply volume
+    volumeSlider.addEventListener('input', () => {
+        backgroundMusic.setVolume(volumeSlider.value / 100);
+        backgroundMusic.setMuted(volumeSlider.value == 0);
+        updateAudioProgress();
+        saveAudioStates();
+    });
+
+    volumeSlider.addEventListener("mousemove", (event) => {
+        const sliderRect = volumeSlider.getBoundingClientRect();
+        const tooltipX = ((event.clientX - sliderRect.left) / sliderRect.width) * 100; // Tooltip position in %
+        volumeTooltip.style.left = `${tooltipX}%`; // Dynamically position tooltip
     });
 }
 
 const initUi = () => {
     createEmptyCells();
     readBoundingRects();
+    volumeSlider.value = backgroundMusic.getVolume() * 100;
+    updateAudioProgress();
 }
 
 const initListeners = () => {
@@ -535,6 +620,7 @@ const initListeners = () => {
     bindListeners();
 }
 
+restoreAudioStates();
 initUi();
 initListeners();
 startGame();

@@ -66,6 +66,24 @@
                 </button>
                 <button class="control-button next-bgm-button" id="next-bgm-button">NEXT BGM</button>
             </div>
+
+            <div class="sound-control-container">
+                <button class="sound-icon-button" id="mute-button" type="button" aria-label="Mute/Unmute">
+                    🔊
+                </button>
+                <div class="volume-slider-wrapper">
+                    <input 
+                        type="range" 
+                        class="volume-slider" 
+                        id="volume-slider" 
+                        min="0" 
+                        max="100" 
+                        value="50"
+                        aria-label="Volume control slider"
+                    />
+                    <div class="volume-tooltip" id="volume-tooltip">50%</div>
+                </div>
+            </div>
         </div>
     </body>
 </html>

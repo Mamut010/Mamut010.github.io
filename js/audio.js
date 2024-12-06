@@ -30,6 +30,11 @@ class AudioPlayer {
     #speed = 1;
 
     /**
+     * @type {number}
+     */
+    #volume = 1;
+
+    /**
      * @type {number|undefined}
      */
     #fadingIntervalId = undefined;
@@ -142,7 +147,7 @@ class AudioPlayer {
     }
 
     /**
-     * Set the audio volume. Note that during fade out process, this method doesn't change the volume to ensure
+     * Set the audio volume, from 0 to 1. Note that during fade out process, this method doesn't change the volume to ensure
      * consistent fade out transition.
      * @param {number} volume
      * @returns {this}
@@ -153,6 +158,7 @@ class AudioPlayer {
         }
 
         this.#audio.volume = boundValue(volume, AudioPlayer.MIN_VOLUME, AudioPlayer.MAX_VOLUME);
+        this.#volume = this.#audio.volume;
         return this;
     }
 
@@ -171,6 +177,9 @@ class AudioPlayer {
      */
     setMuted(muted) {
         this.#audio.muted = muted;
+        if (!muted) {
+            this.#audio.volume = this.#volume;
+        }
         return this;
     }
 
@@ -254,6 +263,13 @@ class AudioPlayer {
     }
 
     /**
+     * @returns {boolean}
+     */
+    isFadingOut() {
+        return typeof this.#fadingIntervalId !== 'undefined';
+    }
+
+    /**
      * Get the current playback position in seconds
      * @returns {number} The playback position in seconds
      */
@@ -285,7 +301,7 @@ class AudioPlayer {
      * @returns {number} The volume level, between 0 and 1
      */
     getVolume() {
-        return this.#audio.volume;
+        return this.#volume;
     }
 
     /**
@@ -328,8 +344,7 @@ class AudioPlayer {
      * @return {this}
      */
     toggleMuted() {
-        this.#audio.muted = !this.#audio.muted;
-        return this;
+        return this.setMuted(!this.isMuted());
     }
 
     /**
@@ -354,7 +369,7 @@ class AudioPlayer {
             return this;
         }
 
-        if (this.#fadingIntervalId) {
+        if (this.isFadingOut()) {
             console.warn("Cannot play new song while fade-out is in progress.");
             return this;
         }
@@ -375,7 +390,7 @@ class AudioPlayer {
             return this;
         }
 
-        if (this.#fadingIntervalId) {
+        if (this.isFadingOut()) {
             console.warn("Cannot play new song while fade-out is in progress.");
             return this;
         }
@@ -413,7 +428,7 @@ class AudioPlayer {
      * @returns {this}
      */
     stop() {
-        if (this.#fadingIntervalId) {
+        if (this.isFadingOut()) {
             this.#endFadeOut();
         }
 
@@ -427,8 +442,8 @@ class AudioPlayer {
      * @param {number} fadeVolume
      * @returns {this}
      */
-    stopFadeOut(fadeIntervalMs = 100, fadeVolume = 0.05) {
-        if (this.#fadingIntervalId) {
+    stopFadeOut(fadeIntervalMs = 100, fadeVolume = 0.1) {
+        if (this.isFadingOut()) {
             console.warn("Fade-out is already in progress. Skipping.");
             return this;
         }
@@ -472,7 +487,7 @@ class AudioPlayer {
     #createAudio() {
         this.#audio = new Audio();
         this.#audio.preload = "auto";  // Preload the audio for smoother playback
-        this.#audio.volume = 1;
+        this.#audio.volume = this.#volume;
     }
 
     #cleanUp() {
