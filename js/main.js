@@ -368,6 +368,7 @@ const reset = () => {
     initGameBoard();
     stopped = isGameOver();
     renderInitialGameBoard();
+    renderScore();
     refreshGameOver();
     saveStates();
 }
