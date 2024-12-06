@@ -45,7 +45,7 @@ class AudioPlayer {
     #beforeFadeOutVolume = 1;
 
     /**
-     * @type {Map<string, ((audio: AudioPlayer) => void)[]>}
+     * @type {Map<string, AudioEventListenerEntry[]>}
      */
     #eventListeners = new Map();
 
@@ -185,34 +185,36 @@ class AudioPlayer {
 
     /**
      * @param {'play'|'resume'|'pause'|'stop'} event
-     * @param {(audio: AudioPlayer) => void} listener
+     * @param {(event: AudioEvent) => void} listener
+     * @param {AudioEventOptions} options
      * @returns {this}
      */
-    addEventListener(event, listener) {
-        let listeners = this.#eventListeners.get(event);
-        if (!listeners) {
-            listeners = [];
-            this.#eventListeners.set(event, listeners);
+    addEventListener(event, listener, options = undefined) {
+        let entries = this.#eventListeners.get(event);
+        if (!entries) {
+            entries = [];
+            this.#eventListeners.set(event, entries);
         }
-        listeners.push(listener);
+        options ??= {};
+        entries.push({ listener, options });
         return this;
     }
 
     /**
      * @param {'play'|'resume'|'pause'|'stop'} event
-     * @param {(audio: AudioPlayer) => void} listener
+     * @param {(event: AudioEvent) => void} listener
      * @returns {this}
      */
     removeEventListener(event, listener) {
-        const listeners = this.#eventListeners.get(event);
-        if (!listeners) {
+        const entries = this.#eventListeners.get(event);
+        if (!entries) {
             return this;
         }
 
-        const idx = listeners.indexOf(listener);
+        const idx = entries.findIndex(entry => entry.listener === listener);
         if (idx >= 0) {
-            listeners.splice(idx, 1);
-            if (listeners.length === 0) {
+            entries.splice(idx, 1);
+            if (entries.length === 0) {
                 this.#eventListeners.delete(event);
             }
         }
@@ -222,7 +224,7 @@ class AudioPlayer {
     /**
      * @return {this}
      */
-    removeAllAudioListeners() {
+    removeEventListeners() {
         this.#eventListeners.clear();
         return this;
     }
@@ -540,10 +542,85 @@ class AudioPlayer {
     }
 
     /**
-     * @param {string} event 
+     * @param {string} eventType
      */
-    #notifyListeners(event) {
-        const listeners = this.#eventListeners.get(event);
-        listeners?.forEach(listener => listener(this));
+    #notifyListeners(eventType) {
+        const entries = this.#eventListeners.get(eventType);
+        if (!entries) {
+            return;
+        }
+
+        const event = new AudioEvent(this, eventType);
+        const removedIndices = new Set();
+
+        entries.forEach((entry, index) => {
+            entry.listener(event);
+
+            const options = entry.options;
+            if (options?.once) {
+                removedIndices.add(index);
+            }
+        });
+
+        if (removedIndices.size === 0) {
+            return;
+        }
+
+        const newEntries = entries.filter((_, index) => !removedIndices.has(index));
+        if (newEntries.length === 0) {
+            this.#eventListeners.delete(eventType);
+        }
+        else {
+            this.#eventListeners.set(eventType, newEntries);
+        }
     }
+}
+
+class AudioEventListenerEntry {
+    /**
+     * @type {(event: AudioEvent) => void}
+     */
+    listener;
+
+    /**
+     * @type {AudioEventOptions}
+     */
+    options;
+}
+
+class AudioEvent {
+    /**
+     * @type {AudioPlayer}
+     */
+    #target;
+
+    /**
+     * @type {string}
+     */
+    #type;
+
+    /**
+     * 
+     * @param {AudioPlayer} target 
+     * @param {string} type 
+     */
+    constructor (target, type) {
+        this.#target = target;
+        this.#type = type;
+    }
+
+    get target() {
+        return this.#target;
+    }
+
+    get type() {
+        return this.#type;
+    }
+}
+
+class AudioEventOptions {
+    /**
+     * @type {boolean | undefined}
+     */
+    once = undefined;
 }

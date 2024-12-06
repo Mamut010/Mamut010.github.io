@@ -565,21 +565,18 @@ const bindListeners = () => {
     });
 
     document.getElementById('next-bgm-button')?.addEventListener('click', () => {
-        const playNext = () => {
+        backgroundMusic.addEventListener('stop', () => {
             backgroundMusic.play();
-            backgroundMusic.removeEventListener('stop', playNext);
-
             volumeSlider.disabled = false;
             volumeSlider.style.cursor = 'pointer';
             updateSliderBackground();
-        };
-
-        backgroundMusic.addEventListener('stop', playNext);
-        backgroundMusic.stopFadeOut();
+        }, { once: true });
 
         volumeSlider.disabled = true;
         volumeSlider.style.cursor = 'not-allowed';
         updateSliderBackground();
+
+        backgroundMusic.stopFadeOut();
     });
 
     // Mute/unmute functionality
