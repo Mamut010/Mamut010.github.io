@@ -10,8 +10,7 @@ const BOARD_STATE_KEY = 'board';
 const SCORE_STATE_KEY = 'score';
 const MERGEDS_STATE_KEY = 'mergeds';
 const SPAWNED_STATE_KEY = 'spawned';
-const VOLUME_STATE_KEY = 'volume';
-const MUTED_STATE_KEY = 'muted';
+const AUDIO_STATE_KEY = 'audio';
 
 const BLOCK_TRANSITION_TIME_MS = 200;
 const START_SCORE_COLOR = '#000000';
@@ -135,8 +134,7 @@ const saveGameStates = () => {
 }
 
 const saveAudioStates = () => {
-    setState(VOLUME_STATE_KEY, backgroundMusic.getVolume());
-    setState(MUTED_STATE_KEY, backgroundMusic.isMuted());
+    setState(AUDIO_STATE_KEY, {volume: backgroundMusic.getVolume(), muted: backgroundMusic.isMuted()});
 }
 
 const restoreGameStates = () => {
@@ -167,15 +165,14 @@ const restoreGameStates = () => {
 }
 
 const restoreAudioStates = () => {
-    const savedVolumeState = getState(VOLUME_STATE_KEY);
-    if (savedVolumeState) {
-        backgroundMusic.setVolume(Number(savedVolumeState));
+    const savedAudioState = getState(AUDIO_STATE_KEY);
+    if (!savedAudioState) {
+        return;
     }
-    
-    const savedMutedState = getState(MUTED_STATE_KEY);
-    if (savedMutedState) {
-        backgroundMusic.setMuted(savedMutedState === 'true');
-    }
+
+    const audioState = JSON.parse(savedAudioState);
+    backgroundMusic.setVolume(audioState.volume);
+    backgroundMusic.setMuted(audioState.muted);
 }
 
 const hasGameSavedStates = () => {
@@ -581,21 +578,19 @@ const bindListeners = () => {
             updateSliderBackground();
         }, { once: true });
 
+        backgroundMusic.stopFadeOut();
+
         volumeSlider.disabled = true;
         volumeSlider.style.cursor = 'not-allowed';
         updateSliderBackground();
-
-        backgroundMusic.stopFadeOut();
     });
 
-    // Mute/unmute functionality
     muteButton.addEventListener('click', () => {
         backgroundMusic.toggleMuted();
         updateAudioProgress();
         saveAudioStates();
     });
 
-    // Update tooltip and apply volume
     volumeSlider.addEventListener('input', () => {
         backgroundMusic.setVolume(volumeSlider.value / 100);
         backgroundMusic.setMuted(volumeSlider.value == 0);
@@ -626,7 +621,9 @@ const initListeners = () => {
     bindListeners();
 }
 
-restoreAudioStates();
-initUi();
-initListeners();
-startGame();
+requestAnimationFrame(() => {
+    restoreAudioStates();
+    initUi();
+    initListeners();
+    startGame();
+});

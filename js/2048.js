@@ -297,10 +297,10 @@ class Board {
 
     /**
      * @param {number} row 
-     * @param {number} column 
+     * @param {number} column
      * @returns {boolean}
      */
-    isInBound(row, column) {
+    isWithinBound(row, column) {
         return row >= 0 && row < this.#rowCount && column >= 0 && column < this.#columnCount;
     }
 
@@ -339,23 +339,6 @@ class Board {
         this.setBlockAt(row, column, undefined);
     }
 
-    /**
-     * @returns {number}
-     */
-    getHighestValue() {
-        let highestValue = -1;
-        for (let i = 0; i < this.getRowCount(); i++) {
-            for (let j = 0; j < this.getColumnCount(); j++) {
-                const block = this.#getBlock(i, j);
-                if (block) {
-                    highestValue = Math.max(highestValue, block.getValue());
-                }
-            }
-        }
-        return highestValue;
-    }
-
-
     *getEmptySlots() {
         for (let i = 0; i < this.#rowCount; i++) {
             for (let j = 0; j < this.#columnCount; j++) {
@@ -382,14 +365,10 @@ class Board {
      * @returns {string}
      */
     toJson() {
-        const values = [];
-        for (const block of this.#blocks) {
-            values.push(block?.getValue());
-        }
         return JSON.stringify({
             rowCount: this.#rowCount,
             columnCount: this.#columnCount,
-            values
+            values: this.#blocks.map(block => block?.getValue()),
         });
     }
 
@@ -831,7 +810,7 @@ class GameBoardOperation extends StatefulBoardOperation {
 
         const row = point.row();
         const column = point.column();
-        if (!board.isInBound(row, column)) {
+        if (!board.isWithinBound(row, column)) {
             return;
         }
         else if (!board.blockAt(row, column)) {
@@ -846,7 +825,7 @@ class GameBoardOperation extends StatefulBoardOperation {
             const dstRow = dstPoint.row();
             const dstColumn = dstPoint.column();
             
-            if (board.isInBound(dstRow, dstColumn)) {
+            if (board.isWithinBound(dstRow, dstColumn)) {
                 success = this.#moveBlock(board, point, dstPoint);
             }
 

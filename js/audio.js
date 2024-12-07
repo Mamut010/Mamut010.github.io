@@ -618,6 +618,7 @@ class AudioEvent {
 
 class AudioEventOptions {
     /**
+     * Specifiy whether the listener should be invoked at most once (it is removed from the listeners list after the invocation).
      * @type {boolean | undefined}
      */
     once = undefined;
