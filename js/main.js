@@ -34,19 +34,6 @@ const volumeTooltip = document.getElementById('volume-tooltip');
 let score = 0;
 let stopped = false;
 let rendering = false;
-
-/**
- * @type {Map<Point, BoundingRectangle>}
- */
-const boundingRects = new Map();
-/**
- * @type {Map<Point, HTMLElement>}
- */
-const emptyCells = new Map();
-/**
- * @type {Map<Point, HTMLElement>}
- */
-const movingCells = new Map();
 /**
  * @type {Point[]}
  */
@@ -78,37 +65,12 @@ const game = (() => {
     const operation = new GameBoardOperation(merger);
     const game = new Game(board, strategyFactory, operation);
     game.setOnBlockMergedListener({
-        onBlockMerged: (block1, block2, mergedBlock) => {
-            score += mergedBlock.getValue();
-        }
+        onBlockMerged: (mergedBlock) => score += mergedBlock.getValue()
     });
     return game;
 })();
 
-const createEmptyCells = () => {
-    const board = game.getBoard();
-    for (let i = 0; i < board.getRowCount(); i++) {
-        for (let j = 0; j < board.getColumnCount(); j++) {
-            const emptyCell = document.createElement('div');
-            emptyCell.classList.add('game-block-empty');
-
-            gameBoardElement.appendChild(emptyCell);
-            emptyCells.set(Point.of(i, j), emptyCell);
-        }
-    }
-}
-
-const readBoundingRects = () => {
-    boundingRects.clear();
-
-    for (const [point, cell] of emptyCells.entries()) {
-        const x = cell.offsetLeft;
-        const y = cell.offsetTop;
-        const w = cell.offsetWidth;
-        const h = cell.offsetHeight;
-        boundingRects.set(point, new BoundingRectangle(x, y, w, h));
-    }
-}
+const cellManager = new CellManager(game, gameBoardElement, (cell, value) => addValueStyle(cell, value));
 
 const setState = (key, state) => {
     if (typeof state === 'undefined' || (Array.isArray(state) && state.length === 0)) {
@@ -236,50 +198,15 @@ const addValueStyle = (cell, value) => {
     }
 }
 
-/**
- * @param {Point} point
- * @param {boolean} spawned
- * @return {HTMLElement}
- */
-const createNewMovingCell = (point, spawned = false) => {
-    const cell = document.createElement('div');
-    cell.classList.add('game-block');
-    movingCells.set(point, cell);
-
-    const rect = boundingRects.get(point);
-    if (rect) {
-        cell.style.left = `${rect.left}px`;
-        cell.style.top = `${rect.top}px`;
-        cell.style.width = `${rect.width}px`;
-        cell.style.height = `${rect.height}px`;
-    }
-
-    gameBoardElement.appendChild(cell);
-
-    const value = game.blockAt(point)?.getValue();
-    if (value) {
-        addValueStyle(cell, value);
-    }
-
-    return cell;
-}
-
-const removeMovingCells = () => {
-    for (const cell of movingCells.values()) {
-        cell.remove();
-    }
-    movingCells.clear();
-}
-
 const renderInitialGameBoard = () => {
     rendering = true;
 
     for (const point of game.getBoard().getOccupiedSlots()) {
-        createNewMovingCell(point);
+        cellManager.create(point);
     }
-    mergedPoints.forEach(point => movingCells.get(point)?.classList.add('merged'));
+    mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
     if (spawnedPoint) {
-        movingCells.get(spawnedPoint)?.classList.add('spawned');
+        cellManager.get(spawnedPoint)?.classList.add('spawned');
     }
 
     rendering = false;
@@ -292,21 +219,22 @@ const renderInitialGameBoard = () => {
 const renderGame = (moves, spawned) => {
     rendering = true;
 
-    renderScore();
     renderGameBoard(moves, spawned, () => {
+        renderScore();
         refreshGameOver();
         if (stopped) {
             gameOverSfx.play();
         }
+        
         rendering = false;
     });
 }
 
 const removeTemporaryVisuals = () => {
-    mergedPoints.forEach(point => movingCells.get(point)?.classList.remove('merged'));
+    mergedPoints.forEach(point => cellManager.get(point)?.classList.remove('merged'));
     mergedPoints.length = 0;
     if (spawnedPoint) {
-        movingCells.get(spawnedPoint)?.classList.remove('spawned');
+        cellManager.get(spawnedPoint)?.classList.remove('spawned');
     }
 }
 
@@ -317,7 +245,7 @@ const removeTemporaryVisuals = () => {
  */
 const renderGameBoard = (moves, spawned, onRenderFinished) => {
     /**
-     * @type {{fromCell: HTMLElement, toCell: HTMLElement, replacedValue: number}[]}
+     * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
      */
     const mergeds = [];
 
@@ -325,36 +253,28 @@ const renderGameBoard = (moves, spawned, onRenderFinished) => {
         const from = move.from;
         const to = move.to;
 
-        const cell = movingCells.get(from);
-        const newRect = boundingRects.get(to);
-
-        if (newRect) {
-            cell.style.left = `${newRect.left}px`;
-            cell.style.top = `${newRect.top}px`;
-        }
+        const cell = cellManager.get(from);
+        const cleanUp = cellManager.move(from, to);
 
         if (move.merged) {
             mergeds.push({
-                fromCell: cell,
-                toCell: movingCells.get(to),
-                replacedValue: game.blockAt(to)?.getValue(),
+                cell,
+                cleanUp,
+                newValue: game.blockAt(to)?.getValue(),
             });
             mergedPoints.push(to);
         }
-
-        movingCells.delete(from);
-        movingCells.set(to, cell);
     }
 
     setTimeout(() => handleMergedCells(mergeds, () => {
-        const spawnedCell = createNewMovingCell(spawned);
+        const spawnedCell = cellManager.create(spawned);
         spawnedCell.classList.add('spawned');
         onRenderFinished();
     }), BLOCK_TRANSITION_TIME_MS);
 }
 
 /**
- * @param {{fromCell: HTMLElement, toCell: HTMLElement, replacedValue: number}[]} mergeds 
+ * @param {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]} mergeds 
  * @param {() => void} onMergeFinished
  * @returns {void}
  */
@@ -365,16 +285,15 @@ const handleMergedCells = (mergeds, onMergeFinished) => {
     }
 
     mergeds.forEach(e => {
-        e.toCell.style.transform = 'none';
-        e.toCell.remove();
-        e.fromCell.classList.add('merged');
-        e.fromCell.style.transform = 'scale(1.2)';
+        e.cleanUp?.();
+        e.cell.classList.add('merged');
+        e.cell.style.transform = 'scale(1.2)';
     });
 
     setTimeout(() => {
         mergeds.forEach(e => {
-            e.fromCell.style.transform = '';
-            addValueStyle(e.fromCell, e.replacedValue);
+            e.cell.style.transform = '';
+            addValueStyle(e.cell, e.newValue);
         });
 
         onMergeFinished();
@@ -415,7 +334,7 @@ const resetStates = () => {
     stopped = false;
     mergedPoints.length = 0;
     spawnedPoint = undefined;
-    removeMovingCells();
+    cellManager.clear();
 }
 
 const reset = () => {
@@ -492,20 +411,6 @@ function closeGameOverModal() {
     gameOverModelOverlay.classList.remove('show');
 }
 
-const handleResize = () => {
-    readBoundingRects();
-    for (const [point, cell] of movingCells.entries()) {
-        const rect = boundingRects.get(point);
-        if (rect) {
-            cell.style.left = `${rect.left}px`;
-            cell.style.top = `${rect.top}px`;
-            cell.style.width = `${rect.width}px`;
-            cell.style.height = `${rect.height}px`;
-        }
-        addValueStyle(cell, game.blockAt(point)?.getValue() ?? 0);
-    }
-};
-
 function getVolumePercentage() {
     return Math.round(backgroundMusic.getVolume() * 100);
 }
@@ -534,7 +439,17 @@ function updateAudioProgress() {
     muteButton.textContent = backgroundMusic.isMuted() ? '🔇' : '🔊';
 }
 
-const bindListeners = () => {
+const initUi = () => {
+    const initialPopUpMessage = document.getElementById('initial-pop-up-message');
+    if (initialPopUpMessage) {
+        initialPopUpMessage.innerHTML = 'Click anywhere to play';
+    }
+    
+    cellManager.initBaseCells();
+    updateAudioProgress();
+}
+
+const initListeners = () => {
     document.addEventListener('keydown', (e) => {
         switch (e.key) {
             case 'ArrowUp':
@@ -630,24 +545,6 @@ const bindListeners = () => {
         const tooltipX = ((event.clientX - sliderRect.left) / sliderRect.width) * 100; // Tooltip position in %
         volumeTooltip.style.left = `${tooltipX}%`; // Dynamically position tooltip
     });
-}
-
-const initUi = () => {
-    const initialPopUpMessage = document.getElementById('initial-pop-up-message');
-    if (initialPopUpMessage) {
-        initialPopUpMessage.innerHTML = 'Click anywhere to play';
-    }
-    
-    createEmptyCells();
-    updateAudioProgress();
-}
-
-const initListeners = () => {
-    const gameBoardResizeObserver = new ResizeObserver((entries) => {
-        entries.forEach(_ => handleResize());
-    });
-    gameBoardResizeObserver.observe(gameBoardElement);
-    bindListeners();
 }
 
 restoreAudioStates();
