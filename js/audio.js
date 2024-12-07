@@ -45,7 +45,7 @@ class AudioPlayer {
     #beforeFadeOutVolume = 1;
 
     /**
-     * @type {Map<string, AudioEventListenerEntry[]>}
+     * @type {Map<AudioEventType[keyof typeof AudioEventType], AudioEventListenerEntry[]>}
      */
     #eventListeners = new Map();
 
@@ -77,22 +77,6 @@ class AudioPlayer {
 
     static get MIN_FADE_VOLUME() {
         return 0.01;
-    }
-
-    static get EVENT_PLAY() {
-        return 'play';
-    }
-
-    static get EVENT_RESUME() {
-        return 'resume';
-    }
-
-    static get EVENT_PAUSE() {
-        return 'pause';
-    }
-
-    static get EVENT_STOP() {
-        return 'stop';
     }
 
     /**
@@ -184,16 +168,16 @@ class AudioPlayer {
     }
 
     /**
-     * @param {'play'|'resume'|'pause'|'stop'} event
+     * @param {AudioEventType[keyof typeof AudioEventType]} eventType
      * @param {(event: AudioEvent) => void} listener
      * @param {AudioEventOptions} options
      * @returns {this}
      */
-    addEventListener(event, listener, options = undefined) {
-        let entries = this.#eventListeners.get(event);
+    addEventListener(eventType, listener, options = undefined) {
+        let entries = this.#eventListeners.get(eventType);
         if (!entries) {
             entries = [];
-            this.#eventListeners.set(event, entries);
+            this.#eventListeners.set(eventType, entries);
         }
         options ??= {};
         entries.push({ listener, options });
@@ -201,12 +185,12 @@ class AudioPlayer {
     }
 
     /**
-     * @param {'play'|'resume'|'pause'|'stop'} event
+     * @param {AudioEventType[keyof typeof AudioEventType]} eventType
      * @param {(event: AudioEvent) => void} listener
      * @returns {this}
      */
-    removeEventListener(event, listener) {
-        const entries = this.#eventListeners.get(event);
+    removeEventListener(eventType, listener) {
+        const entries = this.#eventListeners.get(eventType);
         if (!entries) {
             return this;
         }
@@ -219,17 +203,17 @@ class AudioPlayer {
     }
 
     /**
-     * @param {'play'|'resume'|'pause'|'stop'|('play'|'resume'|'pause'|'stop')[]|undefined} event
+     * @param {(AudioEventType[keyof typeof AudioEventType])|(AudioEventType[keyof typeof AudioEventType])[]|undefined} eventType
      * @return {this}
      */
-    removeEventListeners(event = undefined) {
-        if (typeof event === 'undefined') {
+    removeEventListeners(eventType = undefined) {
+        if (typeof eventType === 'undefined') {
             this.#eventListeners.clear();
             return this;
         }
 
-        const events = asArray(event);
-        events.forEach(e => this.#eventListeners.delete(e));
+        const eventTypes = asArray(eventType);
+        eventTypes.forEach(e => this.#eventListeners.delete(e));
         return this;
     }
 
@@ -238,6 +222,13 @@ class AudioPlayer {
      */
     isPlaying() {
         return !this.#audio.paused && this.#audio.currentTime > 0 && !this.#audio.ended;
+    };
+
+    /**
+     * @returns {boolean}
+     */
+    isStopped() {
+        return this.#audio.paused && this.#audio.currentTime === 0;
     };
 
     /**
@@ -416,7 +407,7 @@ class AudioPlayer {
         }
 
         this.#audio.pause();
-        this.#notifyListeners(AudioPlayer.EVENT_PAUSE);
+        this.#notifyListeners('pause');
         return this;
     }
 
@@ -434,12 +425,17 @@ class AudioPlayer {
      * @returns {this}
      */
     stop() {
+        // If stopped, no need to stop again
+        if (this.isStopped()) {
+            return this;
+        }
+
         if (this.isFadingOut()) {
             this.#endFadeOut();
         }
 
         this.#cleanUp();
-        this.#notifyListeners(AudioPlayer.EVENT_STOP);
+        this.#notifyListeners('stop');
         return this;
     }
 
@@ -505,10 +501,7 @@ class AudioPlayer {
     #startAudio(fromPaused) {
         this.#audio
             .play()
-            .then(() => {
-                const event = fromPaused ? AudioPlayer.EVENT_RESUME : AudioPlayer.EVENT_PLAY;
-                this.#notifyListeners(event);
-            })
+            .then(() => this.#notifyListeners(fromPaused ? 'resume' : 'play'))
             .catch(err => console.error('Playback error:', err));
     }
 
@@ -546,7 +539,7 @@ class AudioPlayer {
     }
 
     /**
-     * @param {string} eventType
+     * @param {AudioEventType[keyof typeof AudioEventType]} eventType
      */
     #notifyListeners(eventType) {
         const entries = this.#eventListeners.get(eventType);
@@ -586,6 +579,13 @@ class AudioEventListenerEntry {
     options;
 }
 
+const AudioEventType = Object.freeze({
+    PLAY: 'play',
+    STOP: 'stop',
+    PAUSE: 'pause', 
+    RESUME: 'resume',
+});
+
 class AudioEvent {
     /**
      * @type {AudioPlayer}
@@ -593,16 +593,16 @@ class AudioEvent {
     #target;
 
     /**
-     * @type {string}
+     * @type {AudioEventType[keyof typeof AudioEventType]}
      */
     #type;
 
     /**
      * 
-     * @param {AudioPlayer} target 
-     * @param {string} type 
+     * @param {AudioPlayer} target
+     * @param {AudioEventType[keyof typeof AudioEventType]} type
      */
-    constructor (target, type) {
+    constructor(target, type) {
         this.#target = target;
         this.#type = type;
     }

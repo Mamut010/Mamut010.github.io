@@ -1,10 +1,10 @@
 'use strict';
 
 const Direction = Object.freeze({
-    UP: Symbol('UP'),
-    DOWN: Symbol('DOWN'),
-    LEFT: Symbol('LEFT'),
-    RIGHT: Symbol('RIGHT'),
+    UP: 'up',
+    DOWN: 'down',
+    LEFT: 'left',
+    RIGHT: 'right',
 });
 
 class Point {
@@ -675,12 +675,12 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
 
 class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
     /**
-     * @type {Map<Direction, BoardTraversalStrategy>}
+     * @type {Map<Direction[keyof typeof Direction], BoardTraversalStrategy>}
      */
     #cache = new Map();
 
     /**
-     * @param {Direction} direction
+     * @param {Direction[keyof typeof Direction]} direction
      * @return {BoardTraversalStrategy}
      */
     create(direction) {
@@ -693,7 +693,7 @@ class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory
     }
 
     /**
-     * @param {Direction} direction
+     * @param {Direction[keyof typeof Direction]} direction
      * @return {BoardTraversalStrategy}
      */
     #createNewStrategy(direction) {
@@ -702,6 +702,7 @@ class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory
             case Direction.DOWN: return new BoardDownTraversalStrategy();
             case Direction.LEFT: return new BoardLeftTraversalStrategy();
             case Direction.RIGHT: return new BoardRightTraversalStrategy();
+            default: throw new Error('Invalid direction');
         };
     }
 }
@@ -967,7 +968,7 @@ class Game {
      * @returns {boolean}
      */
     isSpawnable() {
-        return this.#board.getBlockCount() != this.#board.getSize();
+        return this.#board.getBlockCount() !== this.#board.getSize();
     }
 
     /**
@@ -996,7 +997,7 @@ class Game {
     }
     
     /**
-     * @param {Direction} direction 
+     * @param {Direction[keyof typeof Direction]} direction 
      * @return {Map<Point, BlockMove>} The move map
      */
     moveBlocks(direction) {
@@ -1007,7 +1008,7 @@ class Game {
     }
 
     /**
-     * @param {Direction} direction 
+     * @param {Direction[keyof typeof Direction]} direction 
      * @return {boolean}
      */
     tryMoveBlocks(direction) {

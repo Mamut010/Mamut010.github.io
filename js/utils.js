@@ -2,19 +2,18 @@
 
 /**
  * Randomly select an item from the given array
- * @param {any[]} items The array of items
- * @returns {any} The randomly selected item or 'undefined' if the array is empty
+ * @template {T}
+ * @param {T[]} items The array of items
+ * @returns {T|undefined} The randomly selected item or 'undefined' if the array is empty
  */
 const randomItem = (items) => {
-    if (items.length === 0) {
-        return undefined;
-    }
-    return items[randomIdx(items)];
+    return items.length > 0 ? items[randomIdx(items)] : undefined;
 }
 
 /**
  * Randomly select an index within the given array
- * @param {any[]} items The array of items
+ * @template {T}
+ * @param {T[]} items The array of items
  * @returns {number} The randomly selected index or -1 if the array is empty
  */
 const randomIdx = (items) => {
@@ -26,11 +25,20 @@ const randomIdx = (items) => {
 
 /**
  * Randomly select an item from the given list based on the given weights
- * @param {any[]} items The list of items
+ * @template {T}
+ * @param {T[]} items The list of items
  * @param {number[]} weights The corresponding weights for every item
- * @returns {any} The randomly selected item or 'undefined' if the list is empty
+ * @returns {T|undefined} The randomly selected item or 'undefined' if the list is empty
+ * @throws {Error} If the list's length and number of weights do not match
  */
 const randomItemWeighted = (items, weights) => {
+    if (items.length !== weights.length) {
+        throw new Error(`Invalid argument: the number of items and number of weights must match`);
+    }
+    else if (items.length === 0) {
+        return undefined;
+    }
+
     const totalWeight = weights.reduce((a, b) => a + b, 0);
     let randomWeight = Math.random() * totalWeight;
     for (let i = 0; i < items.length; i++) {
@@ -41,6 +49,28 @@ const randomItemWeighted = (items, weights) => {
     }
 }
 
+class RgbColor {
+    /**
+     * @type {number}
+     */
+    r;
+
+    /**
+     * @type {number}
+     */
+    g;
+
+    /**
+     * @type {number}
+     */
+    b;
+}
+
+/**
+ * 
+ * @param {string} hex 
+ * @returns {RgbColor}
+ */
 const hexToRgb = (hex) => {
     const bigint = parseInt(hex.slice(1), 16);
     const r = (bigint >> 16) & 255;
@@ -49,18 +79,32 @@ const hexToRgb = (hex) => {
     return { r, g, b };
 }
 
+/**
+ * @param {RgbColor} startColor
+ * @param {RgbColor} endColor 
+ * @param {number} factor 
+ * @returns {RgbColor}
+ */
 const interpolateColor = (startColor, endColor, factor) => {
     return {
-      r: Math.round(startColor.r + (endColor.r - startColor.r) * factor),
-      g: Math.round(startColor.g + (endColor.g - startColor.g) * factor),
-      b: Math.round(startColor.b + (endColor.b - startColor.b) * factor),
+        r: Math.round(startColor.r + (endColor.r - startColor.r) * factor),
+        g: Math.round(startColor.g + (endColor.g - startColor.g) * factor),
+        b: Math.round(startColor.b + (endColor.b - startColor.b) * factor),
     };
 }
 
-const rgbToCss = (rgb) => {
-    return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-}
+/**
+ * @param {RgbColor} rgb 
+ * @returns {string}
+ */
+const rgbToCss = (rgb) => `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 
+/**
+ * @template {T}
+ * @param {T|T[]} value 
+ * @param {boolean} newInstance 
+ * @returns {T[]}
+ */
 const asArray = (value, newInstance = false) => {
     if (!Array.isArray(value)) {
         return [value];
@@ -71,9 +115,10 @@ const asArray = (value, newInstance = false) => {
 }
 
 /**
- * @param {any[]} array
+ * @template {T}
+ * @param {T[]} array
  * @param {boolean} newInstance
- * @returns {any[]}
+ * @returns {T[]}
  */
 const shuffle = (array, newInstance = false) => {
     if (newInstance) {
@@ -135,10 +180,11 @@ const boundValue = (value, bound, nextBound = 0) => {
 }
 
 /**
- * @param {any[]} array 
+ * @template {T}
+ * @param {T[]} array
  * @param {Iterable<number>} removedIndices 
  * @param {boolean} inplace 
- * @returns {any[]}
+ * @returns {T[]}
  */
 const removeIndices = (array, removedIndices, inplace = true) => {
     const indices = removedIndices instanceof Set ? removedIndices : new Set(removedIndices);

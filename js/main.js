@@ -424,6 +424,10 @@ const toggleDirectionButtons = () => {
     }
 }
 
+/**
+ * @param {keyof Direction} direction 
+ * @returns {void}
+ */
 const moveInDirection = (direction) => {
     return () => {
         if (rendering || stopped) {
@@ -442,10 +446,10 @@ const moveInDirection = (direction) => {
         saveGameStates();
     }
 }
-const moveUp = moveInDirection(Direction.UP);
-const moveDown = moveInDirection(Direction.DOWN);
-const moveLeft = moveInDirection(Direction.LEFT);
-const moveRight = moveInDirection(Direction.RIGHT);
+const moveUp = moveInDirection('up');
+const moveDown = moveInDirection('down');
+const moveLeft = moveInDirection('left');
+const moveRight = moveInDirection('right');
 
 const startGame = () => {
     if (!hasGameSavedStates()) {
