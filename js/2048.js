@@ -486,7 +486,7 @@ class OnBlockMergedListener {
      * @param {Block} block2 
      * @param {Block} mergedBlock 
      */
-    onBlockMerged(block1, block2, mergedBlock) {
+    onBlockMerged(mergedBlock, block1, block2) {
         throw new Error('Method "onBlockMerged()" must be implemented.');
     }
 }
@@ -870,7 +870,7 @@ class GameBoardOperation extends StatefulBoardOperation {
             this.#emptyCount++;
             success = true;
 
-            this.#notifyListener(currentBlock, dstBlock, mergedBlock);
+            this.#notifyListener(mergedBlock, currentBlock, dstBlock);
         }
 
         if (success) {
@@ -881,12 +881,12 @@ class GameBoardOperation extends StatefulBoardOperation {
     }
 
     /**
-     * @param {Block} block1 
-     * @param {Block} block2 
-     * @param {Block} mergedBlock 
+     * @param {Block} mergedBlock
+     * @param {Block} block1
+     * @param {Block} block2
      */
-    #notifyListener(block1, block2, mergedBlock) {
-        this.#listener?.onBlockMerged(block1, block2, mergedBlock);
+    #notifyListener(mergedBlock, block1, block2) {
+        this.#listener?.onBlockMerged(mergedBlock, block1, block2);
     }
 }
 
