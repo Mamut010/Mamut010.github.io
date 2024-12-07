@@ -650,8 +650,8 @@ const initListeners = () => {
     bindListeners();
 }
 
+restoreAudioStates();
 requestAnimationFrame(() => {
-    restoreAudioStates();
     initUi();
     initListeners();
     startGame();
