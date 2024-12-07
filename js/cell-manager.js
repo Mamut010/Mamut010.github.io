@@ -141,11 +141,10 @@ class CellManager {
             cell.style.top = `${toEntry.top}px`;
         }
 
-        this.#movingCells.delete(from);
-
         const toCell = this.#movingCells.get(to);
         const cleanUp = toCell ? () => this.#addToBackup(toCell) : undefined; 
         
+        this.#movingCells.delete(from);
         this.#movingCells.set(to, cell);
         return cleanUp;
     }
@@ -172,6 +171,7 @@ class CellManager {
 
     #handleResize() {
         for (const [point, cell] of this.#movingCells.entries()) {
+            this.#baseEntries.get(point)?.recalculateDimensions();
             this.#setCellPosAndBound(cell, point);
             this.#invokeCellStyler(cell, point);
         }
@@ -200,10 +200,10 @@ class CellManager {
     #invokeCellStyler(cell, point) {
         const value = this.#game.blockAt(point)?.getValue();
         if (!value) {
-            cell.innerHTML = '';
+            cell.textContent = '';
         }
         else if (!this.#cellStyler) {
-            cell.innerHTML = value;
+            cell.textContent = value.toString();
         }
         else {
             this.#cellStyler(cell, value);
@@ -235,25 +235,53 @@ class BaseEntry {
     #cell;
 
     /**
+     * @type {number}
+     */
+    #top;
+
+    /**
+     * @type {number}
+     */
+    #left;
+
+    /**
+     * @type {number}
+     */
+    #width;
+
+    /**
+     * @type {number}
+     */
+    #height;
+
+    /**
      * @param {HTMLElement} cell
      */
     constructor(cell) {
         this.#cell = cell;
+        this.recalculateDimensions();
+    }
+
+    recalculateDimensions() {
+        this.#top = this.#cell.offsetTop;
+        this.#left = this.#cell.offsetLeft;
+        this.#width = this.#cell.offsetWidth;
+        this.#height = this.#cell.offsetHeight;
     }
 
     get top() {
-        return this.#cell.offsetTop;
+        return this.#top;
     }
 
     get left() {
-        return this.#cell.offsetLeft;
+        return this.#left;
     }
 
     get width() {
-        return this.#cell.offsetWidth;
+        return this.#width;
     }
 
     get height() {
-        return this.#cell.offsetHeight;
+        return this.#height;
     }
 }
