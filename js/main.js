@@ -12,7 +12,6 @@ const MERGEDS_STATE_KEY = 'mergeds';
 const SPAWNED_STATE_KEY = 'spawned';
 const AUDIO_STATE_KEY = 'audio';
 
-const BLOCK_TRANSITION_TIME_MS = 200;
 const START_SCORE_COLOR = '#000000';
 const START_SCORE_SHADOW_COLOR = '#FF9900';
 const END_SCORE_COLOR = "#FFD700";
@@ -23,6 +22,7 @@ const MAX_SCORE_THRESHOLD = 20000;
 const MAX_VALUE_STYLE = 1 << 17;
 
 const scoreElement = document.getElementById('score');
+const scoreIncreaseElement = document.getElementById("score-increase");
 const gameBoardElement = document.getElementById('game-board');
 const gameOverModalBoxElement = document.getElementById('game-over-modal-box');
 const gameOverModelOverlay = document.getElementById('game-over-modal-overlay');
@@ -142,14 +142,39 @@ const hasGameSavedStates = () => {
     return importantKeys.every(key => getState(key) !== null);
 }
 
-const renderScore = () => {
+/**
+ * 
+ * @param {boolean} showIncrease 
+ * @returns 
+ */
+const renderScore = (showIncrease = true) => {
     const oldScore = parseInt(scoreElement.innerText);
     if (oldScore === score) {
         return;
     }
 
     scoreElement.innerText = score;
+    adjustScoreColor();
 
+    if (showIncrease) {
+        showScoreIncrease(score - oldScore);
+    }
+}
+
+/**
+ * @param {number} amount
+ */
+function showScoreIncrease(amount) {
+    const text = amount >= 0 ? `+${amount}` : `-${amount}`; 
+    scoreIncreaseElement.textContent = text;
+    scoreIncreaseElement.classList.add('animate');
+
+    scoreIncreaseElement.addEventListener('animationend', () => {
+        scoreIncreaseElement.classList.remove('animate');
+    }, { once: true });
+}
+
+function adjustScoreColor() {
     const scorePercentage = Math.min(score / MAX_SCORE_THRESHOLD, 1);
 
     // Update text color
@@ -198,36 +223,89 @@ const addValueStyle = (cell, value) => {
     }
 }
 
+/**
+ * @returns {Promise<void>}
+ */
 const renderInitialGameBoard = () => {
     rendering = true;
 
-    for (const point of game.getBoard().getOccupiedSlots()) {
-        cellManager.create(point);
-    }
-    mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
-    if (spawnedPoint) {
-        cellManager.get(spawnedPoint)?.classList.add('spawned');
-    }
+    return new Promise((resolve, reject) => {
+        try {
+            const occupieds = game.getBoard().getOccupiedSlots();
+            if (occupieds.length === 0) {
+                rendering = false;
+                resolve();
+                return;
+            }
 
-    rendering = false;
+            let remaining = occupieds.length;
+            let awaiting = false;
+
+            for (const point of occupieds) {
+                const cell = cellManager.create(point);
+                if (!cell) {
+                    remaining--;
+                    return;
+                }
+
+                awaiting = true;
+        
+                /**
+                 * @param {AnimationEvent} evt 
+                 */
+                const onAnimationEnd = (evt) => {
+                    if (evt.animationName !== 'fade-in') {
+                        return;
+                    }
+
+                    cell.removeEventListener('animationend', onAnimationEnd);
+                    cell.classList.remove('new-game');
+
+                    remaining--;
+                    if (remaining !== 0) {
+                        return;
+                    }
+
+                    rendering = false;
+                    resolve();
+                }
+        
+                cell.classList.add('new-game');
+                cell.addEventListener('animationend', onAnimationEnd);
+            }
+        
+            mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
+            if (spawnedPoint) {
+                cellManager.get(spawnedPoint)?.classList.add('spawned');
+            }
+        
+            if (!awaiting) {
+                rendering = false;
+                resolve();
+            }
+        }
+        catch (err) {
+            reject(err);
+        }
+    });
 }
 
 /**
  * @param {Map<Point, BlockMove>} moves 
  * @param {Point} spawned
+ * @param {Promise<void>}
  */
-const renderGame = (moves, spawned) => {
+const renderGame = async (moves, spawned) => {
     rendering = true;
 
-    renderGameBoard(moves, spawned, () => {
-        renderScore();
-        refreshGameOver();
-        if (stopped) {
-            gameOverSfx.play();
-        }
-        
-        rendering = false;
-    });
+    await renderGameBoard(moves, spawned, () => renderScore(true));
+
+    refreshGameOver();
+    if (stopped) {
+        gameOverSfx.play();
+    }
+    
+    rendering = false;
 }
 
 const removeTemporaryVisuals = () => {
@@ -241,63 +319,151 @@ const removeTemporaryVisuals = () => {
 /**
  * @param {Map<Point, BlockMove>} moves 
  * @param {Point} spawned
- * @param {() => void} onRenderFinished
+ * @param {(() => Promise<void>|void) | undefined} onMergeEnd
+ * @returns {Promise<void>}
  */
-const renderGameBoard = (moves, spawned, onRenderFinished) => {
-    /**
-     * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
-     */
-    const mergeds = [];
+const renderGameBoard = (moves, spawned, onMergeEnd = undefined) => {
+    return new Promise((resolve, reject) => {
+        try {
+            /**
+             * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
+             */
+            const mergeds = [];
 
-    for (const move of moves.values()) {
-        const from = move.from;
-        const to = move.to;
+            let remaining = moves.size;
+            let awaiting = false;
 
-        const cell = cellManager.get(from);
-        const cleanUp = cellManager.move(from, to);
+            for (const move of moves.values()) {
+                const from = move.from;
+                const to = move.to;
+                const cell = cellManager.get(from);
+                if (!cell) {
+                    remaining--;
+                    continue;
+                }
 
-        if (move.merged) {
-            mergeds.push({
-                cell,
-                cleanUp,
-                newValue: game.blockAt(to)?.getValue(),
-            });
-            mergedPoints.push(to);
+                awaiting = true;
+
+                /**
+                 * @param {TransitionEvent} evt
+                 */
+                const onTransitionEnd = async (evt) => {
+                    if (evt.propertyName !== 'left' && evt.propertyName !== 'top') {
+                        return;
+                    }
+
+                    cell.removeEventListener('transitionend', onTransitionEnd);
+
+                    remaining--;
+                    if (remaining !== 0) {
+                        return;
+                    }
+
+                    await handleMergedCells(mergeds);
+                    await onMergeEnd?.();
+                    await spawnNewCell(spawned);
+                    resolve();
+                }
+
+                cell.addEventListener('transitionend', onTransitionEnd);
+
+                const cleanUp = cellManager.move(from, to);
+
+                if (move.merged) {
+                    mergeds.push({
+                        cell,
+                        cleanUp,
+                        newValue: game.blockAt(to)?.getValue(),
+                    });
+                    mergedPoints.push(to);
+                }
+            }
+
+            if (!awaiting) {
+                resolve();
+            }
         }
-    }
-
-    setTimeout(() => handleMergedCells(mergeds, () => {
-        const spawnedCell = cellManager.create(spawned);
-        spawnedCell.classList.add('spawned');
-        onRenderFinished();
-    }), BLOCK_TRANSITION_TIME_MS);
+        catch (err)  {
+            reject(err);
+        }
+    });
 }
 
 /**
- * @param {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]} mergeds 
- * @param {() => void} onMergeFinished
- * @returns {void}
+ * @param {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]} mergeds
+ * @returns {Promise<void>}
  */
-const handleMergedCells = (mergeds, onMergeFinished) => {
-    if (mergeds.length === 0) {
-        onMergeFinished();
-        return;
-    }
-
-    mergeds.forEach(e => {
-        e.cleanUp?.();
-        e.cell.classList.add('merged');
-        e.cell.style.scale = '1.2';
+const handleMergedCells = (mergeds) => {
+    return new Promise((resolve, reject) => {
+        try {
+            if (mergeds.length === 0) {
+                resolve();
+                return;
+            }
+        
+            let remaining = mergeds.length;
+        
+            mergeds.forEach(({ cell, cleanUp, newValue }) => {
+                /**
+                 * @param {AnimationEvent} evt 
+                 */
+                const onAnimationEnd = (evt) => {
+                    if (evt.animationName !== 'bounce-merged-block') {
+                        return;
+                    }
+        
+                    cell.removeEventListener('animationend', onAnimationEnd);
+                    cell.classList.remove('bounce-merged');
+                    cell.classList.add('merged');
+                    addValueStyle(cell, newValue);
+        
+                    remaining--;
+                    if (remaining === 0) {
+                        resolve();
+                    }
+                }
+        
+                cleanUp?.();
+                cell.classList.add('bounce-merged');
+                cell.addEventListener('animationend', onAnimationEnd);
+            });
+        }
+        catch (err) {
+            reject(err);
+        }
     });
+}
 
-    setTimeout(() => {
-        mergeds.forEach(e => {
-            e.cell.style.scale = '';
-            addValueStyle(e.cell, e.newValue);
-        });
+/**
+ * @param {Point} spawned
+ * @returns {Promise<void>}
+ */
+const spawnNewCell = (spawned) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const spawnedCell = cellManager.create(spawned);
+            if (!spawnedCell) {
+                resolve();
+                return;
+            }
+            
+            /**
+             * @param {AnimationEvent} evt 
+             */
+            const onAnimationEnd = (evt) => {
+                if (evt.animationName === 'fade-in') {
+                    spawnedCell.removeEventListener('animationend', onAnimationEnd);
+                    resolve();
+                }
+            }
 
-        onMergeFinished();
-    }, Math.round(BLOCK_TRANSITION_TIME_MS / 2));
+            spawnedCell.classList.add('spawned');
+            spawnedCell.addEventListener('animationend', onAnimationEnd);
+        }
+        catch (err) {
+            reject(err);
+        }
+    });
 }
 
 const refreshGameOver = () => {
@@ -337,12 +503,13 @@ const resetStates = () => {
     cellManager.clear();
 }
 
-const reset = () => {
+const reset = async () => {
     resetStates();
     initGameBoard();
     stopped = isGameOver();
-    renderInitialGameBoard();
-    renderScore();
+
+    renderScore(false);
+    await renderInitialGameBoard();
     refreshGameOver();
     saveGameStates();
 }
@@ -357,11 +524,10 @@ const toggleDirectionButtons = () => {
 }
 
 /**
- * @param {Direction[keyof typeof Direction]} direction 
- * @returns {void}
+ * @param {Direction[keyof typeof Direction]} direction
  */
 const moveInDirection = (direction) => {
-    return () => {
+    return async () => {
         if (rendering || stopped) {
             return;
         }
@@ -378,7 +544,7 @@ const moveInDirection = (direction) => {
         spawnedPoint = spawned;
         stopped = isGameOver();
 
-        renderGame(moves, spawned);
+        await renderGame(moves, spawned);
         saveGameStates();
     }
 }
@@ -387,7 +553,7 @@ const moveDown = moveInDirection(Direction.DOWN);
 const moveLeft = moveInDirection(Direction.LEFT);
 const moveRight = moveInDirection(Direction.RIGHT);
 
-const startGame = () => {
+const startGame = async () => {
     if (!hasGameSavedStates()) {
         initGameBoard();
     }
@@ -396,8 +562,9 @@ const startGame = () => {
     }
 
     stopped = isGameOver();
-    renderScore();
-    renderInitialGameBoard();
+    
+    renderScore(false);
+    await renderInitialGameBoard();
     refreshGameOver();
 };
 
@@ -442,7 +609,7 @@ function updateAudioProgress() {
 const initUi = () => {
     const initialPopUpMessage = document.getElementById('initial-pop-up-message');
     if (initialPopUpMessage) {
-        initialPopUpMessage.innerHTML = 'Click anywhere to play';
+        initialPopUpMessage.textContent = 'Click anywhere to play';
     }
     
     cellManager.initBaseCells();
