@@ -287,12 +287,12 @@ const handleMergedCells = (mergeds, onMergeFinished) => {
     mergeds.forEach(e => {
         e.cleanUp?.();
         e.cell.classList.add('merged');
-        e.cell.style.transform = 'scale(1.2)';
+        e.cell.style.scale = '1.2';
     });
 
     setTimeout(() => {
         mergeds.forEach(e => {
-            e.cell.style.transform = '';
+            e.cell.style.scale = '';
             addValueStyle(e.cell, e.newValue);
         });
 

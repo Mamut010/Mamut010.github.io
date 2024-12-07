@@ -214,7 +214,6 @@ class CellManager {
      * @param {HTMLElement} cell 
      */
     #addToBackup(cell) {
-        cell.style.transform = 'none';
         cell.style.display = 'none';
         this.#backupMovingCells.push(cell);
     }
@@ -223,7 +222,6 @@ class CellManager {
      * @param {HTMLElement} cell 
      */
     #restoreBackupStyle(cell) {
-        cell.style.transform = '';
         cell.style.display = '';
     }
 }

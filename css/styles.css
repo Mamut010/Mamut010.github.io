@@ -140,7 +140,7 @@ body {
 #game-board {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    place-items: center;
+    grid-auto-rows: minmax(0, 1fr);
     padding: 0.8em;
     gap: 0.8em;
     background-color: #d7bfa8;
@@ -224,11 +224,11 @@ body {
     position: absolute;
     animation: fade-in 0.5s ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
-    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, transform 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, scale 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .game-block.spawned {
-    transform: scale(1.1);
+    scale: 1.1;
     -webkit-animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
     -moz-animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
     animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
