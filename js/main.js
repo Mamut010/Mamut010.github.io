@@ -238,10 +238,9 @@ const addValueStyle = (cell, value) => {
 
 /**
  * @param {Point} point
- * @param {boolean} spawned
  * @return {HTMLElement}
  */
-const createNewMovingCell = (point, spawned = false) => {
+const createNewMovingCell = (point) => {
     const cell = document.createElement('div');
     cell.classList.add('game-block');
     movingCells.set(point, cell);
