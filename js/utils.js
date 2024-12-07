@@ -17,57 +17,6 @@ class RgbColor {
     b;
 }
 
-class BoundingRectangle {
-    /**
-     * @type {number}
-     */
-    #x;
-    
-    /**
-     * @type {number}
-     */
-    #y;
-
-    /**
-     * @type {number}
-     */
-    #w;
-
-    /**
-     * @type {number}
-     */
-    #h;
-
-    /**
-     * @param {number} x 
-     * @param {number} y 
-     * @param {number} w 
-     * @param {number} h 
-     */
-    constructor(x, y, w, h) {
-        this.#x = x;
-        this.#y = y;
-        this.#w = w;
-        this.#h = h;
-    }
-
-    get left() {
-        return this.#x;
-    }
-
-    get top() {
-        return this.#y;
-    }
-
-    get width() {
-        return this.#w;
-    }
-
-    get height() {
-        return this.#h;
-    }
-}
-
 /**
  * Randomly select an item from the given array
  * @template {T}
