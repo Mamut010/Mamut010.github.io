@@ -426,15 +426,15 @@ class BlockMove {
         this.#merged = merged;
     }
 
-    from() {
+    get from() {
         return this.#from;
     }
 
-    to() {
+    get to() {
         return this.#to;
     }
 
-    isMerged() {
+    get merged() {
         return this.#merged;
     }
 }
@@ -516,7 +516,7 @@ class StatefulBoardOperation extends BoardOperation {
     /**
      * @returns {Map<Point, BlockMove>}
      */
-    getMoveMap() {
+    getMoves() {
         throw new Error('Method "moveMap()" must be implemented.');
     }
 }
@@ -747,7 +747,7 @@ class GameBoardOperation extends StatefulBoardOperation {
     /**
      * @type {Map<Point, BlockMove>}
      */
-    #moveMap;
+    #moves;
 
     /**
      * @type {BlockMerger}
@@ -767,7 +767,7 @@ class GameBoardOperation extends StatefulBoardOperation {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
         this.#didMove = false;
-        this.#moveMap = new Map();
+        this.#moves = new Map();
         this.#merger = merger;
         this.#listener = undefined;
     }
@@ -779,7 +779,7 @@ class GameBoardOperation extends StatefulBoardOperation {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
         this.#didMove = false;
-        this.#moveMap.clear();
+        this.#moves.clear();
         this.#listener = listener;
     }
 
@@ -793,8 +793,8 @@ class GameBoardOperation extends StatefulBoardOperation {
     /**
      * @returns {Map<Point, BlockMove>}
      */
-    getMoveMap() {
-        return this.#moveMap;
+    getMoves() {
+        return this.#moves;
     }
 
     /**
@@ -874,7 +874,7 @@ class GameBoardOperation extends StatefulBoardOperation {
         }
 
         if (success) {
-            this.#moveMap.set(from, new BlockMove(from, to, this.#isDstMerged));
+            this.#moves.set(from, new BlockMove(from, to, this.#isDstMerged));
         }
 
         return success;
@@ -1004,7 +1004,7 @@ class Game {
         const strategy = this.#strategyFactory.create(direction);
         this.#operation.prepare(this.#listener);
         strategy.execute(this.#board, this.#operation);
-        return new Map(this.#operation.getMoveMap());
+        return new Map(this.#operation.getMoves());
     }
 
     /**

@@ -181,10 +181,8 @@ const hasGameSavedStates = () => {
 }
 
 const renderScore = () => {
-    rendering = true;
     const oldScore = parseInt(scoreElement.innerText);
     if (oldScore === score) {
-        rendering = false;
         return;
     }
 
@@ -213,7 +211,6 @@ const renderScore = () => {
         ${rgbToCss(interpolatedShadowColor)} ${offset}px ${offset}px ${blurRadius}px
     `;
     scoreElement.style.textShadow = textShadow;
-    rendering = false;
 }
 
 /**
@@ -274,6 +271,7 @@ const removeMovingCells = () => {
 
 const renderInitialGameBoard = () => {
     rendering = true;
+
     for (const point of game.getBoard().getOccupiedSlots()) {
         createNewMovingCell(point);
     }
@@ -281,7 +279,25 @@ const renderInitialGameBoard = () => {
     if (spawnedPoint) {
         movingCells.get(spawnedPoint)?.classList.add('spawned');
     }
+
     rendering = false;
+}
+
+/**
+ * @param {Map<Point, BlockMove>} moves 
+ * @param {Point} spawned
+ */
+const renderGame = (moves, spawned) => {
+    rendering = true;
+
+    renderScore();
+    renderGameBoard(moves, spawned, () => {
+        refreshGameOver();
+        if (stopped) {
+            gameOverSfx.play();
+        }
+        rendering = false;
+    });
 }
 
 const removeTemporaryVisuals = () => {
@@ -295,20 +311,17 @@ const removeTemporaryVisuals = () => {
 /**
  * @param {Map<Point, BlockMove>} moves 
  * @param {Point} spawned
- * @param {() => void} onRendered
+ * @param {() => void} onRenderFinished
  */
-const renderGameBoard = (moves, spawned, onRendered) => {
-    rendering = true;
-    removeTemporaryVisuals();
-
+const renderGameBoard = (moves, spawned, onRenderFinished) => {
     /**
      * @type {{fromCell: HTMLElement, toCell: HTMLElement, replacedValue: number}[]}
      */
     const mergeds = [];
 
     for (const move of moves.values()) {
-        const from = move.from();
-        const to = move.to();
+        const from = move.from;
+        const to = move.to;
 
         const cell = movingCells.get(from);
         const newPosition = boundingRects.get(to);
@@ -316,7 +329,7 @@ const renderGameBoard = (moves, spawned, onRendered) => {
         cell.style.left = `${newPosition.x}px`;
         cell.style.top = `${newPosition.y}px`;
 
-        if (move.isMerged()) {
+        if (move.merged) {
             mergeds.push({
                 fromCell: cell,
                 toCell: movingCells.get(to),
@@ -329,29 +342,39 @@ const renderGameBoard = (moves, spawned, onRendered) => {
         movingCells.set(to, cell);
     }
 
-    spawnedPoint = spawned;
-    setTimeout(() => {
-        const mergedCells = [];
-
-        mergeds.forEach(e => {
-            e.toCell.style.transform = 'none';
-            e.toCell.remove();
-            addValueStyle(e.fromCell, e.replacedValue);
-            e.fromCell.classList.add('merged');
-            e.fromCell.style.transform = 'scale(1.2)';
-            mergedCells.push(e.fromCell);
-        });
-
-        if (mergedCells.length !== 0) {
-            setTimeout(() => mergedCells.forEach(cell => cell.style.transform = ''), Math.round(BLOCK_TRANSITION_TIME_MS / 2));
-        }
-
+    setTimeout(() => handleMergedCells(mergeds, () => {
         const spawnedCell = createNewMovingCell(spawned);
         spawnedCell.classList.add('spawned');
+        onRenderFinished();
+    }), BLOCK_TRANSITION_TIME_MS);
+}
 
-        onRendered();
-        rendering = false;
-    }, BLOCK_TRANSITION_TIME_MS);
+/**
+ * @param {{fromCell: HTMLElement, toCell: HTMLElement, replacedValue: number}[]} mergeds 
+ * @param {() => void} onMergeFinished
+ * @returns {void}
+ */
+const handleMergedCells = (mergeds, onMergeFinished) => {
+    if (mergeds.length === 0) {
+        onMergeFinished();
+        return;
+    }
+
+    mergeds.forEach(e => {
+        e.toCell.style.transform = 'none';
+        e.toCell.remove();
+        e.fromCell.classList.add('merged');
+        e.fromCell.style.transform = 'scale(1.2)';
+    });
+
+    setTimeout(() => {
+        mergeds.forEach(e => {
+            e.fromCell.style.transform = '';
+            addValueStyle(e.fromCell, e.replacedValue);
+        });
+
+        onMergeFinished();
+    }, Math.round(BLOCK_TRANSITION_TIME_MS / 2));
 }
 
 const refreshGameOver = () => {
@@ -361,20 +384,6 @@ const refreshGameOver = () => {
     else {
         closeGameOverModal();
     }
-}
-
-/**
- * @param {Map<Point, BlockMove>} moves 
- * @param {Point} spawned
- */
-const renderGame = (moves, spawned) => {
-    renderScore();
-    renderGameBoard(moves, spawned, () => {
-        refreshGameOver();
-        if (stopped) {
-            gameOverSfx.play();
-        }
-    });
 }
 
 const initGameBoard = () => {
@@ -433,6 +442,7 @@ const moveInDirection = (direction) => {
         if (rendering || stopped) {
             return;
         }
+        removeTemporaryVisuals();
 
         const moves = game.moveBlocks(direction);
         if (moves.size === 0) {
@@ -441,7 +451,9 @@ const moveInDirection = (direction) => {
 
         const spawned = game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
 
+        spawnedPoint = spawned;
         stopped = isGameOver();
+
         renderGame(moves, spawned);
         saveGameStates();
     }
