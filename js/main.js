@@ -575,6 +575,10 @@ const bindListeners = () => {
     });
 
     document.getElementById('next-bgm-button')?.addEventListener('click', () => {
+        if (backgroundMusic.isFadingOut()) {
+            return;
+        }
+
         backgroundMusic.addEventListener('stop', () => {
             backgroundMusic.play();
             volumeSlider.disabled = false;
