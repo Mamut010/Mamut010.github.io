@@ -36,7 +36,7 @@ let stopped = false;
 let rendering = false;
 
 /**
- * @type {Map<Point, {x: number, y: number, w: number, h: number}>}
+ * @type {Map<Point, BoundingRectangle>}
  */
 const boundingRects = new Map();
 /**
@@ -106,7 +106,7 @@ const readBoundingRects = () => {
         const y = cell.offsetTop;
         const w = cell.offsetWidth;
         const h = cell.offsetHeight;
-        boundingRects.set(point, {x, y, w, h});
+        boundingRects.set(point, new BoundingRectangle(x, y, w, h));
     }
 }
 
@@ -244,13 +244,15 @@ const addValueStyle = (cell, value) => {
 const createNewMovingCell = (point, spawned = false) => {
     const cell = document.createElement('div');
     cell.classList.add('game-block');
+    movingCells.set(point, cell);
 
     const rect = boundingRects.get(point);
-    movingCells.set(point, cell);
-    cell.style.left = `${rect.x}px`;
-    cell.style.top = `${rect.y}px`;
-    cell.style.width = `${rect.w}px`;
-    cell.style.height = `${rect.h}px`;
+    if (rect) {
+        cell.style.left = `${rect.left}px`;
+        cell.style.top = `${rect.top}px`;
+        cell.style.width = `${rect.width}px`;
+        cell.style.height = `${rect.height}px`;
+    }
 
     gameBoardElement.appendChild(cell);
 
@@ -324,10 +326,12 @@ const renderGameBoard = (moves, spawned, onRenderFinished) => {
         const to = move.to;
 
         const cell = movingCells.get(from);
-        const newPosition = boundingRects.get(to);
+        const newRect = boundingRects.get(to);
 
-        cell.style.left = `${newPosition.x}px`;
-        cell.style.top = `${newPosition.y}px`;
+        if (newRect) {
+            cell.style.left = `${newRect.left}px`;
+            cell.style.top = `${newRect.top}px`;
+        }
 
         if (move.merged) {
             mergeds.push({
@@ -434,7 +438,7 @@ const toggleDirectionButtons = () => {
 }
 
 /**
- * @param {keyof Direction} direction 
+ * @param {Direction[keyof typeof Direction]} direction 
  * @returns {void}
  */
 const moveInDirection = (direction) => {
@@ -442,7 +446,6 @@ const moveInDirection = (direction) => {
         if (rendering || stopped) {
             return;
         }
-        removeTemporaryVisuals();
 
         const moves = game.moveBlocks(direction);
         if (moves.size === 0) {
@@ -451,6 +454,8 @@ const moveInDirection = (direction) => {
 
         const spawned = game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
 
+        removeTemporaryVisuals();
+
         spawnedPoint = spawned;
         stopped = isGameOver();
 
@@ -458,10 +463,10 @@ const moveInDirection = (direction) => {
         saveGameStates();
     }
 }
-const moveUp = moveInDirection('up');
-const moveDown = moveInDirection('down');
-const moveLeft = moveInDirection('left');
-const moveRight = moveInDirection('right');
+const moveUp = moveInDirection(Direction.UP);
+const moveDown = moveInDirection(Direction.DOWN);
+const moveLeft = moveInDirection(Direction.LEFT);
+const moveRight = moveInDirection(Direction.RIGHT);
 
 const startGame = () => {
     if (!hasGameSavedStates()) {
@@ -491,10 +496,12 @@ const handleResize = () => {
     readBoundingRects();
     for (const [point, cell] of movingCells.entries()) {
         const rect = boundingRects.get(point);
-        cell.style.left = `${rect.x}px`;
-        cell.style.top = `${rect.y}px`;
-        cell.style.width = `${rect.w}px`;
-        cell.style.height = `${rect.h}px`;
+        if (rect) {
+            cell.style.left = `${rect.left}px`;
+            cell.style.top = `${rect.top}px`;
+            cell.style.width = `${rect.width}px`;
+            cell.style.height = `${rect.height}px`;
+        }
         addValueStyle(cell, game.blockAt(point)?.getValue() ?? 0);
     }
 };
@@ -626,9 +633,12 @@ const bindListeners = () => {
 }
 
 const initUi = () => {
+    const initialPopUpMessage = document.getElementById('initial-pop-up-message');
+    if (initialPopUpMessage) {
+        initialPopUpMessage.innerHTML = 'Click anywhere to play';
+    }
+    
     createEmptyCells();
-    readBoundingRects();
-    volumeSlider.value = backgroundMusic.getVolume() * 100;
     updateAudioProgress();
 }
 
@@ -637,7 +647,6 @@ const initListeners = () => {
         entries.forEach(_ => handleResize());
     });
     gameBoardResizeObserver.observe(gameBoardElement);
-
     bindListeners();
 }
 
