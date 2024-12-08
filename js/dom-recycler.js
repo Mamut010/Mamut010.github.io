@@ -134,11 +134,7 @@ class DomRecycler {
      * @param {DomRecyclerEntry<TElement>} entry
      */
     #addToBackup(entry) {
-        const element = resetElement(entry.element);
-
-        entry.element = element;
-        element.style.display = 'none';
-
+        entry.element.style.display = 'none';
         this.#backup.push(entry);
     }
 

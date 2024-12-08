@@ -152,7 +152,8 @@ class CellManager {
                 this.#container.appendChild(cell);
                 cell.classList.add('game-block');
             })
-            .addEventListener('restored', (evt) => evt.target.classList.value = 'game-block');
+            .addEventListener('removed', evt => evt.target.classList.remove('game-block'))
+            .addEventListener('restored', evt => evt.target.classList.add('game-block'));
     }
 
     #initBaseEntries() {
