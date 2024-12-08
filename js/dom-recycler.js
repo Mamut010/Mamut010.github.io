@@ -84,7 +84,7 @@ class DomRecycler {
         return this.#backup.length;
     }
 
-    emptyBackup() {
+    isBackupEmpty() {
         return this.backupSize() === 0;
     }
 
@@ -181,6 +181,7 @@ class DomRecyclerReadOnlyEntry {
     }
 
     /**
+     * @readonly
      * @returns {TElement}
      */
     get element() {

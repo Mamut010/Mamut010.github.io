@@ -15,19 +15,19 @@ class CellManager {
     #cellStyler;
 
     /**
+     * @type {DomRecycler<HTMLElement>}
+     */
+    #cellRecycler;
+
+    /**
      * @type {Map<Point, BaseEntry>}
      */
     #baseEntries = new Map();
 
     /**
-     * @type {Map<Point, HTMLElement>}
+     * @type {Map<Point, DomRecyclerReadOnlyEntry<HTMLElement>>}
      */
     #movingCells = new Map();
-
-    /**
-     * @type {HTMLElement[]}
-     */
-    #backupMovingCells = [];
 
     /**
      * @param {Game} game
@@ -44,6 +44,7 @@ class CellManager {
      * @returns {void}
      */
     initBaseCells() {
+        this.#initRecycler();
         this.#initBaseEntries();
         this.#attachResizeObserver();
     }
@@ -53,7 +54,7 @@ class CellManager {
      */
     clear() {
         for (const cell of this.#movingCells.values()) {
-            this.#addToBackup(cell);
+            cell.remove();
         }
 
         this.#movingCells.clear();
@@ -72,7 +73,7 @@ class CellManager {
      * @returns {HTMLElement|undefined}
      */
     get(point) {
-        return this.#movingCells.get(point);
+        return this.#movingCells.get(point)?.element;
     }
 
     /**
@@ -84,29 +85,14 @@ class CellManager {
             return undefined;
         }
 
-        let cell = this.#backupMovingCells.pop();
-        let fromBackup;
+        const cell = this.#cellRecycler.getOrCreate();
+        const element = cell.element;
 
-        if (!cell) {
-            cell = document.createElement('div');
-            cell.classList.add('game-block');
-            this.#container.appendChild(cell);
-            fromBackup = false;
-        }
-        else {
-            fromBackup = true;
-        }
-
-        this.#setCellPosAndBound(cell, point);
-        this.#invokeCellStyler(cell, point);
-
-        if (fromBackup) {
-            this.#restoreBackupStyle(cell);
-        }
-
+        this.#setCellPosAndBound(element, point);
+        this.#invokeCellStyler(element, point);
         this.#movingCells.set(point, cell);
 
-        return cell;
+        return element;
     }
 
     /**
@@ -120,7 +106,7 @@ class CellManager {
         }
 
         this.#movingCells.delete(point);
-        this.#addToBackup(cell);
+        cell.remove();
         return true;
     }
 
@@ -130,23 +116,35 @@ class CellManager {
      * @returns {(() => void) | undefined}
      */
     move(from, to) {
-        const cell = this.get(from);
+        const cell = this.#movingCells.get(from);
         if (!cell) {
             return undefined;
         }
 
+        const element = cell.element;
         const toEntry = this.#baseEntries.get(to);
         if (toEntry) {
-            cell.style.left = `${toEntry.left}px`;
-            cell.style.top = `${toEntry.top}px`;
+            element.style.left = `${toEntry.left}px`;
+            element.style.top = `${toEntry.top}px`;
         }
 
         const toCell = this.#movingCells.get(to);
-        const cleanUp = toCell ? () => this.#addToBackup(toCell) : undefined; 
+        const cleanUp = toCell ? () => toCell.remove() : undefined; 
         
         this.#movingCells.delete(from);
         this.#movingCells.set(to, cell);
         return cleanUp;
+    }
+
+    #initRecycler() {
+        this.#cellRecycler = new DomRecycler(() => document.createElement('div'));
+        this.#cellRecycler
+            .addEventListener('created', (evt) => {
+                const cell = evt.target;
+                this.#container.appendChild(cell);
+                cell.classList.add('game-block');
+            })
+            .addEventListener('restored', (evt) => evt.target.classList.value = 'game-block');
     }
 
     #initBaseEntries() {
@@ -172,13 +170,14 @@ class CellManager {
     #handleResize() {
         for (const [point, cell] of this.#movingCells.entries()) {
             this.#baseEntries.get(point)?.recalculateDimensions();
-            this.#setCellPosAndBound(cell, point);
-            this.#invokeCellStyler(cell, point);
+            const element = cell.element;
+            this.#setCellPosAndBound(element, point);
+            this.#invokeCellStyler(element, point);
         }
     }
 
     /**
-     * @param {HTMLElement} cell 
+     * @param {HTMLElement} cell
      * @param {Point} point
      */
     #setCellPosAndBound(cell, point) {
@@ -194,7 +193,7 @@ class CellManager {
     }
 
     /**
-     * @param {HTMLElement} cell 
+     * @param {HTMLElement} cell
      * @param {Point} point
      */
     #invokeCellStyler(cell, point) {
@@ -208,24 +207,6 @@ class CellManager {
         else {
             this.#cellStyler(cell, value);
         }
-    }
-
-    /**
-     * @param {HTMLElement} cell 
-     */
-    #addToBackup(cell) {
-        cell = resetElement(cell);
-        cell.style.display = 'none';
-
-        this.#backupMovingCells.push(cell);
-    }
-
-    /**
-     * @param {HTMLElement} cell 
-     */
-    #restoreBackupStyle(cell) {
-        cell.style.display = '';
-        cell.classList.value = 'game-block';
     }
 }
 
