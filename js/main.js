@@ -175,7 +175,7 @@ const renderScore = async (showIncrease = true) => {
 const showScoreIncrease = async (amount) => {
     await conditionalEventListener(
         {
-            items: scoreIncreaseRecycler.getOrCreate(),
+            items: scoreIncreaseRecycler.acquire(),
             elementSupplier: e => e.element,
             eventType: 'animationend',
             eventFilter: evt => evt.animationName === 'float-up-fading-out',

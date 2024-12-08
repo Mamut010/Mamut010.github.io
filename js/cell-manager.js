@@ -85,7 +85,7 @@ class CellManager {
             return undefined;
         }
 
-        const cell = this.#cellRecycler.getOrCreate();
+        const cell = this.#cellRecycler.acquire();
         const element = cell.element;
 
         this.#setCellPosAndBound(element, point);

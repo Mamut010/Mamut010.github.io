@@ -88,29 +88,41 @@ class DomRecycler {
         return this.backupSize() === 0;
     }
 
-    hasBackup() {
-        return this.backupSize() > 0;
+    /**
+     * Clear the backup and return all elements inside the backup.
+     * @returns {TElement[]} All elements inside the backup
+     */
+    clear() {
+        const elements = this.#backup.map(e => e.element);
+        this.#backup.length = 0;
+        return elements;
     }
 
     /**
      * @returns {DomRecyclerReadOnlyEntry<TElement>}
      */
-    getOrCreate() {
+    acquire() {
         let entry = this.#backup.pop();
 
         if (!entry) {
             const element = this.#creator();
 
-            entry = new DomRecyclerEntry(element, (e) => {
-                this.#addToBackup(e);
-                this.#notifyListeners('removed', e);
-            });
+            entry = new DomRecyclerEntry(
+                element,
+                (e) => {
+                    this.#addToBackup(e);
+                    this.#notifyListeners('removed', e);
+                },
+                (e) => {
+                    this.#restoreStateFromBackup(e);
+                    this.#notifyListeners('restored', e);
+                }
+            );
 
             this.#notifyListeners('created', entry);
         }
         else {
-            this.#restoreFromBackup(entry);
-            this.#notifyListeners('restored', entry);
+            entry.restore();
         }
 
         this.#notifyListeners('invoked', entry);
@@ -133,27 +145,28 @@ class DomRecycler {
     /**
      * @param {DomRecyclerEntry<TElement>} entry
      */
-    #restoreFromBackup(entry) {
+    #restoreStateFromBackup(entry) {
         entry.element.style.display = '';
     }
 
     /**
      * @param {DomRecyclerEventType[keyof typeof DomRecyclerEventType]} eventType
-     * @param {DomRecyclerEntry<TElement>} entry
+     * @param {DomRecyclerEntry<TElement>|TElement} entryOrElement
      */
-    #notifyListeners(eventType, entry) {
-        const entries = this.#eventListeners.get(eventType);
-        if (!entries || entries.length === 0) {
+    #notifyListeners(eventType, entryOrElement) {
+        const eventEntries = this.#eventListeners.get(eventType);
+        if (!eventEntries || eventEntries.length === 0) {
             return;
         }
 
-        const event = new DomRecyclerEvent(eventType, entry.element);
+        const element = entryOrElement instanceof DomRecyclerEntry ? entryOrElement.element : entryOrElement;
+        const event = new DomRecyclerEvent(eventType, element);
         const removedIndices = new Set();
 
-        entries.forEach((entry, index) => {
-            entry.listener(event);
+        eventEntries.forEach((eventEntry, index) => {
+            eventEntry.listener(event);
 
-            const options = entry.options;
+            const options = eventEntry.options;
             if (options?.once) {
                 removedIndices.add(index);
             }
@@ -163,8 +176,8 @@ class DomRecycler {
             return;
         }
 
-        removeIndices(entries, removedIndices);
-        if (entries.length === 0) {
+        removeIndices(eventEntries, removedIndices);
+        if (eventEntries.length === 0) {
             this.#eventListeners.delete(eventType);
         }
     }
@@ -212,13 +225,25 @@ class DomRecyclerEntry extends DomRecyclerReadOnlyEntry {
     #remove;
 
     /**
-     * @param {TElement} element 
-     * @param {(entry: DomRecyclerEntry<TElement>) => void} removeFn 
+     * @type {(entry: DomRecyclerEntry<TElement>) => void}
      */
-    constructor(element, removeFn) {
+    #restore;
+
+    /**
+     * @type {boolean}
+     */
+    #removed = false;
+
+    /**
+     * @param {TElement} element 
+     * @param {(entry: DomRecyclerEntry<TElement>) => void} removeFn
+     * @param {(entry: DomRecyclerEntry<TElement>) => void} restoreFn
+     */
+    constructor(element, removeFn, restoreFn) {
         super();
         this.#element = element;
         this.#remove = removeFn;
+        this.#restore = restoreFn;
     }
 
     get element() {
@@ -232,8 +257,18 @@ class DomRecyclerEntry extends DomRecyclerReadOnlyEntry {
         this.#element = value;
     }
 
+    restore() {
+        if (this.#removed) {
+            this.#restore(this);
+            this.#removed = false;
+        }
+    }
+
     remove() {
-        this.#remove(this);
+        if (!this.#removed) {
+            this.#remove(this);
+            this.#removed = true;
+        }
     }
 }
 
@@ -274,19 +309,24 @@ class DomRecyclerEvent {
     #target;
 
     /**
-     * 
-     * @param {TElement} target
      * @param {DomRecyclerEventType[keyof typeof DomRecyclerEventType]} type
+     * @param {TElement} target
      */
     constructor(type, target) {
         this.#type = type;
         this.#target = target;
     }
 
+    /**
+     * @readonly
+     */
     get type() {
         return this.#type;
     }
 
+    /**
+     * @readonly
+     */
     get target() {
         return this.#target;
     }
