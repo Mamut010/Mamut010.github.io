@@ -213,8 +213,9 @@ const removeIndices = (array, removedIndices, inplace = true) => {
 
 /**
  * Completely resets an element by replacing it with a new instance.
- * @param {HTMLElement} element - The element to reset.
- * @returns {HTMLElement} - The fresh new element.
+ * @template {HTMLElement} TElement
+ * @param {TElement} element - The element to reset.
+ * @returns {TElement} - The fresh new element.
  */
 const resetElement = (element) => {
     const newElement = document.createElement(element.tagName);
