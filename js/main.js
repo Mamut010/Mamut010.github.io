@@ -70,6 +70,15 @@ const game = (() => {
 })();
 
 const cellManager = new CellManager(game, gameBoardElement, (cell, value) => addValueStyle(cell, value));
+const scoreIncreaseRecycler = new DomRecycler(() => document.createElement('span'))
+                                .addEventListener('created', (evt) => {
+                                    const element = evt.target;
+                                    scoreElement.after(element);
+                                    element.classList.add('score-increase');
+                                })
+                                .addEventListener('restored', (evt) => {
+                                    evt.target.classList.add('score-increase');
+                                });
 
 const setState = (key, state) => {
     if (typeof state === 'undefined' || (Array.isArray(state) && state.length === 0)) {
@@ -166,8 +175,8 @@ const renderScore = async (showIncrease = true) => {
 const showScoreIncrease = async (amount) => {
     await conditionalEventListener(
         {
-            items: document.createElement('span'),
-            elementSupplier: ele => ele,
+            items: scoreIncreaseRecycler.acquire(),
+            elementSupplier: e => e.element,
             eventType: 'animationend',
             eventFilter: evt => evt.animationName === 'float-up-fading-out',
         },
@@ -175,11 +184,8 @@ const showScoreIncrease = async (amount) => {
             onEachItem: (ele) => {
                 const text = amount >= 0 ? `+${amount}` : `-${amount}`; 
                 ele.textContent = text;
-
-                scoreElement.after(ele);
-                ele.classList.add('score-increase');
             },
-            onEachEvent: ele => ele.remove(),
+            onEachEvent: (_, e) => e.remove(),
         }
     );
 }

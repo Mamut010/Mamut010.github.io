@@ -198,6 +198,9 @@ class AudioPlayer {
         const idx = entries.findIndex(entry => entry.listener === listener);
         if (idx >= 0) {
             entries.splice(idx, 1);
+            if (entries.length === 0) {
+                this.#eventListeners.delete(eventType);
+            }
         }
         return this;
     }
@@ -564,6 +567,9 @@ class AudioPlayer {
         }
 
         removeIndices(entries, removedIndices);
+        if (entries.length === 0) {
+            this.#eventListeners.delete(eventType);
+        }
     }
 }
 
