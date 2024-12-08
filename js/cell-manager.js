@@ -15,9 +15,9 @@ class CellManager {
     #cellStyler;
 
     /**
-     * @type {DomRecycler<HTMLElement>}
+     * @type {(DomRecycler<HTMLElement> | undefined)}
      */
-    #cellRecycler;
+    #cellRecycler = undefined;
 
     /**
      * @type {Map<Point, BaseEntry>}
@@ -41,12 +41,20 @@ class CellManager {
     }
 
     /**
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     initBaseCells() {
-        this.#initRecycler();
-        this.#initBaseEntries();
-        this.#attachResizeObserver();
+        return new Promise((resolve, reject) => {
+            try {
+                this.#initRecycler();
+                this.#initBaseEntries();
+                this.#attachResizeObserver();
+                resolve();
+            }
+            catch (err) {
+                reject(err);
+            }
+        });
     }
 
     /**
@@ -81,7 +89,7 @@ class CellManager {
      * @returns {HTMLElement|undefined}
      */
     create(point) {
-        if (this.#movingCells.has(point)) {
+        if (!this.#cellRecycler || this.#movingCells.has(point)) {
             return undefined;
         }
 

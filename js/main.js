@@ -69,16 +69,27 @@ const game = (() => {
     return game;
 })();
 
-const cellManager = new CellManager(game, gameBoardElement, (cell, value) => addValueStyle(cell, value));
-const scoreIncreaseRecycler = new DomRecycler(() => document.createElement('span'))
-                                .addEventListener('created', (evt) => {
-                                    const element = evt.target;
-                                    scoreElement.after(element);
-                                    element.classList.add('score-increase');
-                                })
-                                .addEventListener('restored', (evt) => {
-                                    evt.target.classList.add('score-increase');
-                                });
+const cellManager = (() => {
+    return new CellManager(
+        game,
+        gameBoardElement,
+        (cell, value) => addValueStyle(cell, value)
+    );
+})();
+
+const scoreIncreaseRecycler = (() => {
+    const recycler = new DomRecycler(() => document.createElement('span'));
+    recycler
+        .addEventListener('created', (evt) => {
+            const element = evt.target;
+            scoreElement.after(element);
+            element.classList.add('score-increase');
+        })
+        .addEventListener('restored', (evt) => {
+            evt.target.classList.add('score-increase');
+        });
+    return recycler;
+})();
 
 const setState = (key, state) => {
     if (typeof state === 'undefined' || (Array.isArray(state) && state.length === 0)) {
@@ -512,8 +523,10 @@ const initUi = () => {
         initialPopUpMessage.textContent = 'Click anywhere to play';
     }
     
-    cellManager.initBaseCells();
+    const initBaseCellPromise = cellManager.initBaseCells();
     updateAudioProgress();
+
+    return initBaseCellPromise;
 }
 
 const initListeners = () => {
@@ -615,8 +628,8 @@ const initListeners = () => {
 }
 
 restoreAudioStates();
-requestAnimationFrame(() => {
-    initUi();
+requestAnimationFrame(async () => {
+    await initUi();
     initListeners();
-    startGame();
+    await startGame();
 });

@@ -436,16 +436,67 @@ class BlockMove {
         this.#merged = merged;
     }
 
+    /**
+     * @readonly
+     */
     get from() {
         return this.#from;
     }
 
+    /**
+     * @readonly
+     */
     get to() {
         return this.#to;
     }
 
+    /**
+     * @readonly
+     */
     get merged() {
         return this.#merged;
+    }
+}
+
+class BoardTraversalEntry {
+    /**
+     * @type {number}
+     */
+    #row;
+
+    /**
+     * @type {number}
+     */
+    #column;
+
+    /**
+     * @type {boolean}
+     */
+    #isNewRound;
+
+    /**
+     * @param {number} row
+     * @param {number} column
+     * @param {boolean} isNewRound 
+     */
+    constructor(row, column, isNewRound) {
+        this.#row = row;
+        this.#column = column;
+        this.#isNewRound = isNewRound;
+    }
+
+    /**
+     * @returns {Point}
+     */
+    point() {
+        return Point.of(this.#row, this.#column);
+    }
+
+    /**
+     * @returns {boolean}
+     */
+    isNewRound() {
+        return this.#isNewRound;
     }
 }
 
@@ -484,6 +535,7 @@ class BoardOperation {
      * @param {Point} point
      * @param {boolean} isNewRound
      * @param {PointMover} mover
+     * @returns {boolean}
      */
     operate(board, point, isNewRound, mover) {
         throw new Error('Method "operate()" must be implemented.');
@@ -529,13 +581,6 @@ class StatefulBoardOperation extends BoardOperation {
     }
 
     /**
-     * @returns {boolean}
-     */
-    didMove() {
-        throw new Error('Method "didMove()" must be implemented.');
-    }
-
-    /**
      * @returns {Map<Point, BlockMove>}
      */
     getMoves() {
@@ -555,9 +600,11 @@ class BoardTraversalStrategy {
 
     /**
      * @param {Board} board 
-     * @param {BoardOperation} operation 
+     * @param {BoardOperation} operation
+     * @param {boolean} earlyTerminated
+     * @returns {boolean}
      */
-    execute(board, operation) {
+    execute(board, operation, earlyTerminated = false) {
         throw new Error('Method "execute()" must be implemented.');
     }
 }
@@ -613,25 +660,82 @@ class BlockMerger {
 }
 
 /**
+ * @abstract
  * @implements {BoardTraversalStrategy}
  */
-class BoardUpTraversalStrategy extends BoardTraversalStrategy {
+class AbstractBoardTraversalStrategy extends BoardTraversalStrategy {
+    /**
+     * @type {PointMover}
+     */
+    #mover;
+
+    /**
+     * @param {PointMover} mover 
+     */
+    constructor(mover) {
+        super();
+        if(this.constructor === AbstractBoardTraversalStrategy) {
+            throw new Error('Class "AbstractBoardTraversalStrategy" cannot be instantiated as it is an abstract class.');
+        }
+
+        this.#mover = mover;
+    }
+
+    /**
+     * @abstract
+     * @protected
+     * @param {number} rowCount
+     * @param {number} columnCount
+     * @returns {Iterable<BoardTraversalEntry>}
+     */
+    traverse(rowCount, columnCount) {
+        throw new Error('Method "traverse()" must be implemented.');
+    }
+
     /**
      * @param {Board} board 
-     * @param {BoardOperation} operation 
+     * @param {BoardOperation} operation
+     * @param {boolean} earlyTerminated
      */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
+    execute(board, operation, earlyTerminated = false) {
+        const row = board.getRowCount();
+        const column = board.getColumnCount();
+
+        let moved = false;
+        for (const entry of this.traverse(row, column)) {
+            if (operation.operate(board, entry.point(), entry.isNewRound(), this.#mover)) {
+                if (earlyTerminated) {
+                    return true;
+                }
+                moved = true;
+            }
+        }
+        return moved;
+    }
+}
+
+/**
+ * @extends AbstractBoardTraversalStrategy
+ */
+class BoardUpTraversalStrategy extends AbstractBoardTraversalStrategy {
+    constructor() {
+        super({
             move: (point, offset) => point.moveRow(-offset)
-        };
-        
-        for (let column = 0; column < board.getColumnCount(); column++) {
+        });
+    }
+
+    /**
+     * @override
+     * @protected
+     * @param {number} rowCount
+     * @param {number} columnCount
+     * @returns {Iterable<BoardTraversalEntry>}
+     */
+    *traverse(rowCount, columnCount) {
+        for (let column = 0; column < columnCount; column++) {
             let isNewRound = true;
-            for (let row = 0; row < board.getRowCount(); row++) {
-                operation.operate(board, Point.of(row, column), isNewRound, mover);
+            for (let row = 0; row < rowCount; row++) {
+                yield new BoardTraversalEntry(row, column, isNewRound);
                 isNewRound = false;
             }
         }
@@ -639,25 +743,27 @@ class BoardUpTraversalStrategy extends BoardTraversalStrategy {
 }
 
 /**
- * @implements {BoardTraversalStrategy}
+ * @extends AbstractBoardTraversalStrategy
  */
-class BoardDownTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
+class BoardDownTraversalStrategy extends AbstractBoardTraversalStrategy {
+    constructor() {
+        super({
             move: (point, offset) => point.moveRow(offset)
-        };
-        
-        for (let column = 0; column < board.getColumnCount(); column++) {
+        });
+    }
+
+    /**
+     * @override
+     * @protected
+     * @param {number} rowCount
+     * @param {number} columnCount
+     * @returns {Iterable<BoardTraversalEntry>}
+     */
+    *traverse(rowCount, columnCount) {
+        for (let column = 0; column < columnCount; column++) {
             let isNewRound = true;
-            for (let row = board.getRowCount() - 1; row >= 0; row--) {
-                operation.operate(board, Point.of(row, column), isNewRound, mover);
+            for (let row = rowCount - 1; row >= 0; row--) {
+                yield new BoardTraversalEntry(row, column, isNewRound);
                 isNewRound = false;
             }
         }
@@ -665,25 +771,27 @@ class BoardDownTraversalStrategy extends BoardTraversalStrategy {
 }
 
 /**
- * @implements {BoardTraversalStrategy}
+ * @extends AbstractBoardTraversalStrategy
  */
-class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
+class BoardLeftTraversalStrategy extends AbstractBoardTraversalStrategy {
+    constructor() {
+        super({
             move: (point, offset) => point.moveColumn(-offset)
-        };
-        
-        for (let row = 0; row < board.getRowCount(); row++) {
+        });
+    }
+
+    /**
+     * @override
+     * @protected
+     * @param {number} rowCount
+     * @param {number} columnCount
+     * @returns {Iterable<BoardTraversalEntry>}
+     */
+    *traverse(rowCount, columnCount) {
+        for (let row = 0; row < rowCount; row++) {
             let isNewRound = true;
-            for (let column = 0; column < board.getColumnCount(); column++) {
-                operation.operate(board, Point.of(row, column), isNewRound, mover);
+            for (let column = 0; column < columnCount; column++) {
+                yield new BoardTraversalEntry(row, column, isNewRound);
                 isNewRound = false;
             }
         }
@@ -691,25 +799,27 @@ class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
 }
 
 /**
- * @implements {BoardTraversalStrategy}
+ * @extends AbstractBoardTraversalStrategy
  */
-class BoardRightTraversalStrategy extends BoardTraversalStrategy {
-    /**
-     * @param {Board} board 
-     * @param {BoardOperation} operation 
-     */
-    execute(board, operation) {
-        /**
-         * @type {PointMover}
-         */
-        const mover = {
+class BoardRightTraversalStrategy extends AbstractBoardTraversalStrategy {
+    constructor() {
+        super({
             move: (point, offset) => point.moveColumn(offset)
-        };
-        
-        for (let row = 0; row < board.getRowCount(); row++) {
+        });
+    }
+
+    /**
+     * @override
+     * @protected
+     * @param {number} rowCount
+     * @param {number} columnCount
+     * @returns {Iterable<BoardTraversalEntry>}
+     */
+    *traverse(rowCount, columnCount) {
+        for (let row = 0; row < rowCount; row++) {
             let isNewRound = true;
-            for (let column = board.getColumnCount() - 1; column >= 0; column--) {
-                operation.operate(board, Point.of(row, column), isNewRound, mover);
+            for (let column = columnCount - 1; column >= 0; column--) {
+                yield new BoardTraversalEntry(row, column, isNewRound);
                 isNewRound = false;
             }
         }
@@ -836,13 +946,6 @@ class GameBoardOperation extends StatefulBoardOperation {
     }
 
     /**
-     * @returns {boolean}
-     */
-    didMove() {
-        return this.#didMove;
-    }
-
-    /**
      * @returns {Map<Point, BlockMove>}
      */
     getMoves() {
@@ -853,7 +956,8 @@ class GameBoardOperation extends StatefulBoardOperation {
      * @param {Board} board 
      * @param {Point} point
      * @param {boolean} isNewRound 
-     * @param {PointMover} mover 
+     * @param {PointMover} mover
+     * @returns {boolean}
      */
     operate(board, point, isNewRound, mover) {
         if (isNewRound) {
@@ -864,11 +968,11 @@ class GameBoardOperation extends StatefulBoardOperation {
         const row = point.row();
         const column = point.column();
         if (!board.isWithinBound(row, column)) {
-            return;
+            return false;
         }
         else if (!board.blockAt(row, column)) {
             this.#emptyCount++;
-            return;
+            return false;
         }
 
         let offset = 1 + this.#emptyCount;
@@ -888,6 +992,7 @@ class GameBoardOperation extends StatefulBoardOperation {
         if (success) {
             this.#didMove = true;
         }
+        return this.#didMove;
     }
 
     /**
@@ -1071,20 +1176,6 @@ class Game {
         const strategy = this.#strategyFactory.create(direction);
         this.#operation.prepare();
         const tempBoard = Board.copy(this.#board);
-
-        /**
-         * @type {BoardOperation}
-         */
-        const tempOperation = {
-            operate: (board, row, column, isNewRound, mover) => {
-                if (this.#operation.didMove()) {
-                    return;
-                }
-                this.#operation.operate(board, row, column, isNewRound, mover);
-            }
-        }
-        
-        strategy.execute(tempBoard, tempOperation);
-        return this.#operation.didMove();
+        return strategy.execute(tempBoard, this.#operation, true);
     }
 }
