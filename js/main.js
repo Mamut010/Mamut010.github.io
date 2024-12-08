@@ -22,7 +22,6 @@ const MAX_SCORE_THRESHOLD = 20000;
 const MAX_VALUE_STYLE = 1 << 17;
 
 const scoreElement = document.getElementById('score');
-const scoreIncreaseElement = document.getElementById("score-increase");
 const gameBoardElement = document.getElementById('game-board');
 const gameOverModalBoxElement = document.getElementById('game-over-modal-box');
 const gameOverModelOverlay = document.getElementById('game-over-modal-overlay');
@@ -145,9 +144,9 @@ const hasGameSavedStates = () => {
 /**
  * 
  * @param {boolean} showIncrease 
- * @returns 
+ * @returns {Promise<void>}
  */
-const renderScore = (showIncrease = true) => {
+const renderScore = async (showIncrease = true) => {
     const oldScore = parseInt(scoreElement.innerText);
     if (oldScore === score) {
         return;
@@ -157,24 +156,35 @@ const renderScore = (showIncrease = true) => {
     adjustScoreColor();
 
     if (showIncrease) {
-        showScoreIncrease(score - oldScore);
+        await showScoreIncrease(score - oldScore);
     }
 }
 
 /**
  * @param {number} amount
  */
-function showScoreIncrease(amount) {
-    const text = amount >= 0 ? `+${amount}` : `-${amount}`; 
-    scoreIncreaseElement.textContent = text;
-    scoreIncreaseElement.classList.add('animate');
+const showScoreIncrease = async (amount) => {
+    await conditionalEventListener(
+        {
+            items: document.createElement('span'),
+            elementSupplier: ele => ele,
+            eventType: 'animationend',
+            eventFilter: evt => evt.animationName === 'float-up-fading-out',
+        },
+        {
+            onEachItem: (ele) => {
+                const text = amount >= 0 ? `+${amount}` : `-${amount}`; 
+                ele.textContent = text;
 
-    scoreIncreaseElement.addEventListener('animationend', () => {
-        scoreIncreaseElement.classList.remove('animate');
-    }, { once: true });
+                scoreElement.after(ele);
+                ele.classList.add('score-increase');
+            },
+            onEachEvent: ele => ele.remove(),
+        }
+    );
 }
 
-function adjustScoreColor() {
+const adjustScoreColor = () => {
     const scorePercentage = Math.min(score / MAX_SCORE_THRESHOLD, 1);
 
     // Update text color
@@ -224,13 +234,13 @@ const renderInitialGameBoard = async () => {
     await conditionalEventListener(
         {
             items: game.getBoard().getOccupiedSlots(),
-            elementSupplier: e => cellManager.create(e),
+            elementSupplier: point => cellManager.create(point),
             eventType: 'animationend',
             eventFilter: evt => evt.animationName === 'fade-in',
         },
         {
-            onEachItem: ele => ele.classList.add('new-game'),
-            onEachEvent: ele => ele.classList.remove('new-game'),
+            onEachItem: cell => cell.classList.add('new-game'),
+            onEachEvent: cell => cell.classList.remove('new-game'),
         }
     );
 
@@ -250,7 +260,10 @@ const renderInitialGameBoard = async () => {
 const renderGame = async (moves, spawned) => {
     rendering = true;
 
-    await renderGameBoard(moves, spawned, () => renderScore(true));
+    await renderGameBoard(moves);
+    
+    renderScore(true);
+    spawnNewCell(spawned);
     refreshGameOver();
     if (stopped) {
         gameOverSfx.play();
@@ -268,12 +281,10 @@ const removeTemporaryVisuals = () => {
 }
 
 /**
- * @param {Map<Point, BlockMove>} moves 
- * @param {Point} spawned
- * @param {(() => Promise<void>|void) | undefined} onMergeEnd
+ * @param {Map<Point, BlockMove>} moves
  * @returns {Promise<void>}
  */
-const renderGameBoard = async (moves, spawned, onMergeEnd = undefined) => {
+const renderGameBoard = async (moves) => {
     /**
      * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
      */
@@ -282,17 +293,17 @@ const renderGameBoard = async (moves, spawned, onMergeEnd = undefined) => {
     await conditionalEventListener(
         {
             items: [...moves.values()],
-            elementSupplier: e => cellManager.get(e.from),
+            elementSupplier: move => cellManager.get(move.from),
             eventType: 'transitionend',
             eventFilter: (evt) => evt.propertyName === 'left' || evt.propertyName === 'top',
         },
         {
-            onEachItem: (ele, move) => {
+            onEachItem: (cell, move) => {
                 const { from, to, merged } = move;
                 const cleanUp = cellManager.move(from, to);
                 if (merged) {
                     mergeds.push({
-                        cell: ele,
+                        cell,
                         cleanUp,
                         newValue: game.blockAt(to)?.getValue(),
                     });
@@ -303,8 +314,6 @@ const renderGameBoard = async (moves, spawned, onMergeEnd = undefined) => {
     );
 
     await handleMergedCells(mergeds);
-    await onMergeEnd?.();
-    spawnNewCell(spawned);
 }
 
 /**
@@ -320,14 +329,14 @@ const handleMergedCells = async (mergeds) => {
             eventFilter: evt => evt.animationName === 'bounce-merged-block',
         },
         {
-            onEachItem: (ele, e) => {
+            onEachItem: (cell, e) => {
                 e.cleanUp?.();
-                ele.classList.add('bounce-merged');
+                cell.classList.add('bounce-merged');
             },
-            onEachEvent: (ele, e) => {
-                ele.classList.remove('bounce-merged');
-                ele.classList.add('merged');
-                addValueStyle(ele, e.newValue);
+            onEachEvent: (cell, e) => {
+                cell.classList.remove('bounce-merged');
+                cell.classList.add('merged');
+                addValueStyle(cell, e.newValue);
             },
         }
     );
@@ -341,12 +350,12 @@ const spawnNewCell = async (spawned) => {
     await conditionalEventListener(
         {
             items: cellManager.create(spawned),
-            elementSupplier: e => e,
+            elementSupplier: cell => cell,
             eventType: 'animationend',
             eventFilter: evt => evt.animationName === 'fade-in',
         },
         {
-            onEachItem: ele => ele.classList.add('spawned'),
+            onEachItem: cell => cell.classList.add('spawned'),
         }
     );
 }

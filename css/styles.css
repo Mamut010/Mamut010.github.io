@@ -165,9 +165,6 @@ body {
     font-weight: bold;
     opacity: 0;
     pointer-events: none;
-}
-
-.score-increase.animate {
     animation: float-up-fading-out 1s ease-out forwards;
 }
 
