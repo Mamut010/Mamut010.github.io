@@ -245,6 +245,11 @@ class ConditionalEventListenerParams {
     elementSupplier;
 
     /**
+     * @type {number|undefined}
+     */
+    count = undefined;
+
+    /**
      * @type {TEventType}
      */
     eventType;
@@ -294,9 +299,9 @@ const conditionalEventListener = (params, listeners = new ConditionalEventListen
      */
     const items = asArray(params.items);
     const { elementSupplier, eventType, eventFilter } = params;
+    let remaining = lowerBoundValue(params.count ?? items.length, 0);
 
     return new Promise((resolve, reject) => {
-        let remaining = items.length;
         if (remaining === 0) {
             resolve();
             return;
