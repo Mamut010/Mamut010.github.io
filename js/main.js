@@ -85,12 +85,8 @@ const scoreIncreaseRecycler = (() => {
             scoreElement.after(element);
             element.classList.add('score-increase');
         })
-        .addEventListener('removed', (evt) => {
-            evt.target.classList.remove('score-increase');
-        })
-        .addEventListener('restored', (evt) => {
-            evt.target.classList.add('score-increase');
-        });
+        .addEventListener('removed', evt =>  evt.target.className = '')
+        .addEventListener('restored', evt => evt.target.classList.add('score-increase'));
     return recycler;
 })();
 
