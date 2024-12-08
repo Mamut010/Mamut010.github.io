@@ -189,15 +189,7 @@ function adjustScoreColor() {
     const interpolatedShadowColor = interpolateColor(shadowStartColor, shadowEndColor, scorePercentage);
     const blurRadius = (END_SCORE_SHADOW_BLUR * scorePercentage).toFixed(2);
     const offset = (END_SCORE_SHADOW_OFFSET * scorePercentage).toFixed(2);
-
-    // Text shadow layers for border effect (multiple layers to create the border)
-    const textShadow = `
-        ${rgbToCss(interpolatedShadowColor)} -${offset}px -${offset}px ${blurRadius}px,
-        ${rgbToCss(interpolatedShadowColor)} ${offset}px -${offset}px ${blurRadius}px,
-        ${rgbToCss(interpolatedShadowColor)} -${offset}px ${offset}px ${blurRadius}px,
-        ${rgbToCss(interpolatedShadowColor)} ${offset}px ${offset}px ${blurRadius}px
-    `;
-    scoreElement.style.textShadow = textShadow;
+    scoreElement.style.textShadow = rgbToTextBorderCss(interpolatedShadowColor, offset, blurRadius);
 }
 
 /**
@@ -226,68 +218,28 @@ const addValueStyle = (cell, value) => {
 /**
  * @returns {Promise<void>}
  */
-const renderInitialGameBoard = () => {
+const renderInitialGameBoard = async () => {
     rendering = true;
 
-    return new Promise((resolve, reject) => {
-        try {
-            const occupieds = game.getBoard().getOccupiedSlots();
-            if (occupieds.length === 0) {
-                rendering = false;
-                resolve();
-                return;
-            }
-
-            let remaining = occupieds.length;
-            let awaiting = false;
-
-            for (const point of occupieds) {
-                const cell = cellManager.create(point);
-                if (!cell) {
-                    remaining--;
-                    return;
-                }
-
-                awaiting = true;
-        
-                /**
-                 * @param {AnimationEvent} evt 
-                 */
-                const onAnimationEnd = (evt) => {
-                    if (evt.animationName !== 'fade-in') {
-                        return;
-                    }
-
-                    cell.removeEventListener('animationend', onAnimationEnd);
-                    cell.classList.remove('new-game');
-
-                    remaining--;
-                    if (remaining !== 0) {
-                        return;
-                    }
-
-                    rendering = false;
-                    resolve();
-                }
-        
-                cell.classList.add('new-game');
-                cell.addEventListener('animationend', onAnimationEnd);
-            }
-        
-            mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
-            if (spawnedPoint) {
-                cellManager.get(spawnedPoint)?.classList.add('spawned');
-            }
-        
-            if (!awaiting) {
-                rendering = false;
-                resolve();
-            }
+    await conditionalEventListener(
+        {
+            items: game.getBoard().getOccupiedSlots(),
+            elementSupplier: e => cellManager.create(e),
+            eventType: 'animationend',
+            eventFilter: evt => evt.animationName === 'fade-in',
+        },
+        {
+            onEachItem: ele => ele.classList.add('new-game'),
+            onEachEvent: ele => ele.classList.remove('new-game'),
         }
-        catch (err) {
-            reject(err);
-        }
-    });
+    );
+
+    mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
+    if (spawnedPoint) {
+        cellManager.get(spawnedPoint)?.classList.add('spawned');
+    }
+
+    rendering = false;
 }
 
 /**
@@ -299,7 +251,6 @@ const renderGame = async (moves, spawned) => {
     rendering = true;
 
     await renderGameBoard(moves, spawned, () => renderScore(true));
-
     refreshGameOver();
     if (stopped) {
         gameOverSfx.play();
@@ -322,148 +273,82 @@ const removeTemporaryVisuals = () => {
  * @param {(() => Promise<void>|void) | undefined} onMergeEnd
  * @returns {Promise<void>}
  */
-const renderGameBoard = (moves, spawned, onMergeEnd = undefined) => {
-    return new Promise((resolve, reject) => {
-        try {
-            /**
-             * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
-             */
-            const mergeds = [];
+const renderGameBoard = async (moves, spawned, onMergeEnd = undefined) => {
+    /**
+     * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
+     */
+    const mergeds = [];
 
-            let remaining = moves.size;
-            let awaiting = false;
-
-            for (const move of moves.values()) {
-                const from = move.from;
-                const to = move.to;
-                const cell = cellManager.get(from);
-                if (!cell) {
-                    remaining--;
-                    continue;
-                }
-
-                awaiting = true;
-
-                /**
-                 * @param {TransitionEvent} evt
-                 */
-                const onTransitionEnd = async (evt) => {
-                    if (evt.propertyName !== 'left' && evt.propertyName !== 'top') {
-                        return;
-                    }
-
-                    cell.removeEventListener('transitionend', onTransitionEnd);
-
-                    remaining--;
-                    if (remaining !== 0) {
-                        return;
-                    }
-
-                    await handleMergedCells(mergeds);
-                    await onMergeEnd?.();
-                    await spawnNewCell(spawned);
-                    resolve();
-                }
-
-                cell.addEventListener('transitionend', onTransitionEnd);
-
+    await conditionalEventListener(
+        {
+            items: [...moves.values()],
+            elementSupplier: e => cellManager.get(e.from),
+            eventType: 'transitionend',
+            eventFilter: (evt) => evt.propertyName === 'left' || evt.propertyName === 'top',
+        },
+        {
+            onEachItem: (ele, move) => {
+                const { from, to, merged } = move;
                 const cleanUp = cellManager.move(from, to);
-
-                if (move.merged) {
+                if (merged) {
                     mergeds.push({
-                        cell,
+                        cell: ele,
                         cleanUp,
                         newValue: game.blockAt(to)?.getValue(),
                     });
                     mergedPoints.push(to);
                 }
             }
+        }
+    );
 
-            if (!awaiting) {
-                resolve();
-            }
-        }
-        catch (err)  {
-            reject(err);
-        }
-    });
+    await handleMergedCells(mergeds);
+    await onMergeEnd?.();
+    spawnNewCell(spawned);
 }
 
 /**
  * @param {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]} mergeds
  * @returns {Promise<void>}
  */
-const handleMergedCells = (mergeds) => {
-    return new Promise((resolve, reject) => {
-        try {
-            if (mergeds.length === 0) {
-                resolve();
-                return;
-            }
-        
-            let remaining = mergeds.length;
-        
-            mergeds.forEach(({ cell, cleanUp, newValue }) => {
-                /**
-                 * @param {AnimationEvent} evt 
-                 */
-                const onAnimationEnd = (evt) => {
-                    if (evt.animationName !== 'bounce-merged-block') {
-                        return;
-                    }
-        
-                    cell.removeEventListener('animationend', onAnimationEnd);
-                    cell.classList.remove('bounce-merged');
-                    cell.classList.add('merged');
-                    addValueStyle(cell, newValue);
-        
-                    remaining--;
-                    if (remaining === 0) {
-                        resolve();
-                    }
-                }
-        
-                cleanUp?.();
-                cell.classList.add('bounce-merged');
-                cell.addEventListener('animationend', onAnimationEnd);
-            });
+const handleMergedCells = async (mergeds) => {
+    await conditionalEventListener(
+        {
+            items: mergeds,
+            elementSupplier: e => e.cell,
+            eventType: 'animationend',
+            eventFilter: evt => evt.animationName === 'bounce-merged-block',
+        },
+        {
+            onEachItem: (ele, e) => {
+                e.cleanUp?.();
+                ele.classList.add('bounce-merged');
+            },
+            onEachEvent: (ele, e) => {
+                ele.classList.remove('bounce-merged');
+                ele.classList.add('merged');
+                addValueStyle(ele, e.newValue);
+            },
         }
-        catch (err) {
-            reject(err);
-        }
-    });
+    );
 }
 
 /**
  * @param {Point} spawned
  * @returns {Promise<void>}
  */
-const spawnNewCell = (spawned) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const spawnedCell = cellManager.create(spawned);
-            if (!spawnedCell) {
-                resolve();
-                return;
-            }
-            
-            /**
-             * @param {AnimationEvent} evt 
-             */
-            const onAnimationEnd = (evt) => {
-                if (evt.animationName === 'fade-in') {
-                    spawnedCell.removeEventListener('animationend', onAnimationEnd);
-                    resolve();
-                }
-            }
-
-            spawnedCell.classList.add('spawned');
-            spawnedCell.addEventListener('animationend', onAnimationEnd);
+const spawnNewCell = async (spawned) => {
+    await conditionalEventListener(
+        {
+            items: cellManager.create(spawned),
+            elementSupplier: e => e,
+            eventType: 'animationend',
+            eventFilter: evt => evt.animationName === 'fade-in',
+        },
+        {
+            onEachItem: ele => ele.classList.add('spawned'),
         }
-        catch (err) {
-            reject(err);
-        }
-    });
+    );
 }
 
 const refreshGameOver = () => {
@@ -509,8 +394,8 @@ const reset = async () => {
     stopped = isGameOver();
 
     renderScore(false);
-    await renderInitialGameBoard();
     refreshGameOver();
+    await renderInitialGameBoard();
     saveGameStates();
 }
 

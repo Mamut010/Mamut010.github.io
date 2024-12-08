@@ -1,22 +1,5 @@
 'use strict';
 
-class RgbColor {
-    /**
-     * @type {number}
-     */
-    r;
-
-    /**
-     * @type {number}
-     */
-    g;
-
-    /**
-     * @type {number}
-     */
-    b;
-}
-
 /**
  * Randomly select an item from the given array
  * @template T
@@ -66,6 +49,12 @@ const randomItemWeighted = (items, weights) => {
     }
 }
 
+class RgbColor {
+    /** @type {number} */ r;
+    /** @type {number} */ g;
+    /** @type {number} */ b;
+}
+
 /**
  * 
  * @param {string} hex 
@@ -98,6 +87,22 @@ const interpolateColor = (startColor, endColor, factor) => {
  * @returns {string}
  */
 const rgbToCss = (rgb) => `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+
+/**
+ * @param {RgbColor} rgb 
+ * @param {number} offset 
+ * @param {number} blurRadius 
+ * @returns {string}
+ */
+const rgbToTextBorderCss = (rgb, offset, blurRadius) => {
+    // Text shadow layers for border effect (multiple layers to create the border)
+    return `
+        ${rgbToCss(rgb)} -${offset}px -${offset}px ${blurRadius}px,
+        ${rgbToCss(rgb)} ${offset}px -${offset}px ${blurRadius}px,
+        ${rgbToCss(rgb)} -${offset}px ${offset}px ${blurRadius}px,
+        ${rgbToCss(rgb)} ${offset}px ${offset}px ${blurRadius}px
+    `;
+}
 
 /**
  * @template T
@@ -215,4 +220,111 @@ const resetElement = (element) => {
     const newElement = document.createElement(element.tagName);
     element.replaceWith(newElement);
     return newElement;
+}
+
+/**
+ * @template T
+ * @typedef {T extends (infer U)[] ? U : T} SingleOrElementType<T>
+ */
+
+/**
+ * @template TItems
+ * @template {HTMLElement} TElement
+ * @template {keyof HTMLElementEventMap} TEventType
+ */
+class ConditionalEventListenerParams {
+    /**
+     * @type {TItems}
+     */
+    items;
+
+    /**
+     * @type {(item: SingleOrElementType<TItems>, index: number) => TElement}
+     */
+    elementSupplier;
+
+    /**
+     * @type {TEventType}
+     */
+    eventType;
+
+    /**
+     * @type {((evt: HTMLElementEventMap[TEventType]) => boolean)|undefined}
+     */
+    eventFilter = undefined;
+}
+
+/**
+ * @template TItem
+ * @template {HTMLElement} TElement
+ * @template {keyof HTMLElementEventMap} TEventType
+ */
+class ConditionalEventListeners {
+    /**
+     *  @typedef {(HTMLElementEventMap[TEventType])} TEvent
+     */
+
+    /**
+     * @type {((element: TElement, item: TItem, index: number) => Promise<void>|void)|undefined}
+     */
+    onEachItem = undefined;
+
+    /**
+     * @type {((element: TElement, item: TItem, index: number, evt: TEvent) => Promise<void>|void) | undefined}
+     */
+    onEachEvent = undefined;
+}
+
+/**
+ * @template TItems
+ * @template {HTMLElement} TElement
+ * @template {keyof HTMLElementEventMap} TEventType
+ * @param {ConditionalEventListenerParams<TItems, TElement, TEventType>} params
+ * @param {ConditionalEventListeners<TItem, TElement, TEventType> | undefined} listeners
+ * @returns {Promise<void>}
+ */
+const conditionalEventListener = (params, listeners = new ConditionalEventListeners()) => {
+    /**
+     * @typedef {SingleOrElementType<TItems>} TItem
+     */
+
+    /**
+     * @type {TItem[]}
+     */
+    const items = asArray(params.items);
+    const { elementSupplier, eventType, eventFilter } = params;
+
+    return new Promise((resolve, reject) => {
+        let remaining = items.length;
+        if (remaining === 0) {
+            resolve();
+            return;
+        }
+
+        try {
+            items.forEach(async (item, index) => {
+                const element = elementSupplier(item, index);
+
+                const eventHandler = async (evt) => {
+                    if (eventFilter && !eventFilter(evt)) {
+                        return;
+                    }
+
+                    element.removeEventListener(eventType, eventHandler);
+                    await listeners.onEachEvent?.(element, item, index, evt);
+
+                    remaining--;
+                    if (remaining === 0) {
+                        resolve();
+                    }
+                };
+                
+                element.addEventListener(eventType, eventHandler);
+                await listeners.onEachItem?.(element, item, index);
+            });
+        }
+        catch (err) {
+            reject(err);
+        }
+    });
 }
