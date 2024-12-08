@@ -449,6 +449,9 @@ class BlockMove {
     }
 }
 
+/**
+ * @interface
+ */
 class PointMover {
     constructor() {
         if(this.constructor === PointMover) {
@@ -466,6 +469,9 @@ class PointMover {
     }
 }
 
+/**
+ * @interface
+ */
 class BoardOperation {
     constructor() {
         if(this.constructor === BoardOperation) {
@@ -484,6 +490,9 @@ class BoardOperation {
     }
 }
 
+/**
+ * @interface
+ */
 class OnBlockMergedListener {
     constructor() {
         if(this.constructor === OnBlockMergedListener) {
@@ -501,6 +510,9 @@ class OnBlockMergedListener {
     }
 }
 
+/**
+ * @interface
+ */
 class StatefulBoardOperation extends BoardOperation {
     constructor() {
         super();
@@ -531,6 +543,9 @@ class StatefulBoardOperation extends BoardOperation {
     }
 }
 
+/**
+ * @interface
+ */
 class BoardTraversalStrategy {
     constructor() {
         if(this.constructor === BoardTraversalStrategy) {
@@ -547,6 +562,9 @@ class BoardTraversalStrategy {
     }
 }
 
+/**
+ * @interface
+ */
 class BoardTraversalStrategyFactory {
     constructor() {
         if(this.constructor === BoardTraversalStrategyFactory) {
@@ -565,6 +583,9 @@ class BoardTraversalStrategyFactory {
     }
 }
 
+/**
+ * @interface
+ */
 class BlockMerger {
     constructor() {
         if(this.constructor === BlockMerger) {
@@ -591,6 +612,9 @@ class BlockMerger {
     }
 }
 
+/**
+ * @implements {BoardTraversalStrategy}
+ */
 class BoardUpTraversalStrategy extends BoardTraversalStrategy {
     /**
      * @param {Board} board 
@@ -614,6 +638,9 @@ class BoardUpTraversalStrategy extends BoardTraversalStrategy {
     }
 }
 
+/**
+ * @implements {BoardTraversalStrategy}
+ */
 class BoardDownTraversalStrategy extends BoardTraversalStrategy {
     /**
      * @param {Board} board 
@@ -637,6 +664,9 @@ class BoardDownTraversalStrategy extends BoardTraversalStrategy {
     }
 }
 
+/**
+ * @implements {BoardTraversalStrategy}
+ */
 class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
     /**
      * @param {Board} board 
@@ -660,6 +690,9 @@ class BoardLeftTraversalStrategy extends BoardTraversalStrategy {
     }
 }
 
+/**
+ * @implements {BoardTraversalStrategy}
+ */
 class BoardRightTraversalStrategy extends BoardTraversalStrategy {
     /**
      * @param {Board} board 
@@ -683,6 +716,9 @@ class BoardRightTraversalStrategy extends BoardTraversalStrategy {
     }
 }
 
+/**
+ * @implements {BoardTraversalStrategyFactory}
+ */
 class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory {
     /**
      * @type {Map<Direction[keyof typeof Direction], BoardTraversalStrategy>}
@@ -717,6 +753,9 @@ class CachingBoardTraversalStrategyFactory extends BoardTraversalStrategyFactory
     }
 }
 
+/**
+ * @implements {BlockMerger}
+ */
 class IdenticalBlockMerger extends BlockMerger {
     /**
      * @param {Block} block1 
@@ -738,6 +777,9 @@ class IdenticalBlockMerger extends BlockMerger {
     }
 }
 
+/**
+ * @implements {StatefulBoardOperation}
+ */
 class GameBoardOperation extends StatefulBoardOperation {
     /**
      * @type {number}
@@ -987,11 +1029,15 @@ class Game {
      */
     spawnBlock(block) {
         if (!this.isSpawnable() || !block) {
-            return;
+            return undefined;
         }
         
         const emptySlots = this.#board.getEmptySlots();
         const slot = randomItem(emptySlots);
+        if (!slot) {
+            return undefined;
+        }
+
         this.#board.setBlockAt(slot.row(), slot.column(), block);
         return slot;
     }

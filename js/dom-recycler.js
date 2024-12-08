@@ -296,6 +296,7 @@ class DomRecyclerEventListenerEntry {
 
 /**
  * @template {HTMLElement} TElement
+ * @interface
  */
 class DomRecyclerEvent {
     /**
