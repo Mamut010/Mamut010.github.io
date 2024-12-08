@@ -297,12 +297,16 @@ const removeTemporaryVisuals = () => {
 }
 
 /**
+ * @typedef {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}} MergedCellEntry
+ */
+
+/**
  * @param {Map<Point, BlockMove>} moves
  * @returns {Promise<void>}
  */
 const renderGameBoard = async (moves) => {
     /**
-     * @type {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]}
+     * @type {MergedCellEntry[]}
      */
     const mergeds = [];
 
@@ -333,7 +337,7 @@ const renderGameBoard = async (moves) => {
 }
 
 /**
- * @param {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}[]} mergeds
+ * @param {MergedCellEntry[]} mergeds
  * @returns {Promise<void>}
  */
 const handleMergedCells = async (mergeds) => {
@@ -582,7 +586,7 @@ const initListeners = () => {
     document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
 
     const initialPopUpElement = document.getElementById('initial-pop-up');
-    initialPopUpElement?.addEventListener('click', (e) => {
+    initialPopUpElement?.addEventListener('click', () => {
         backgroundMusic.play();
         initialPopUpElement.remove();
     });
