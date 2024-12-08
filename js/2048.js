@@ -339,26 +339,36 @@ class Board {
         this.setBlockAt(row, column, undefined);
     }
 
-    *getEmptySlots() {
+    /**
+     * @returns {Point[]}
+     */
+    getEmptySlots() {
+        const slots = [];
         for (let i = 0; i < this.#rowCount; i++) {
             for (let j = 0; j < this.#columnCount; j++) {
                 const block = this.#getBlock(i, j);
                 if (!block) {
-                    yield Point.of(i, j);
+                    slots.push(Point.of(i, j));
                 }
             }
         }
+        return slots;
     }
 
-    *getOccupiedSlots() {
+    /**
+     * @returns {Point[]}
+     */
+    getOccupiedSlots() {
+        const slots = [];
         for (let i = 0; i < this.#rowCount; i++) {
             for (let j = 0; j < this.#columnCount; j++) {
                 const block = this.#getBlock(i, j);
                 if (block) {
-                    yield Point.of(i, j);
+                    slots.push(Point.of(i, j));
                 }
             }
         }
+        return slots;
     }
 
     /**
@@ -980,7 +990,7 @@ class Game {
             return;
         }
         
-        const emptySlots = [...this.#board.getEmptySlots()];
+        const emptySlots = this.#board.getEmptySlots();
         const slot = randomItem(emptySlots);
         this.#board.setBlockAt(slot.row(), slot.column(), block);
         return slot;

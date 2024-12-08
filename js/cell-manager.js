@@ -214,7 +214,9 @@ class CellManager {
      * @param {HTMLElement} cell 
      */
     #addToBackup(cell) {
+        cell = resetElement(cell);
         cell.style.display = 'none';
+
         this.#backupMovingCells.push(cell);
     }
 
@@ -223,6 +225,7 @@ class CellManager {
      */
     #restoreBackupStyle(cell) {
         cell.style.display = '';
+        cell.classList.value = 'game-block';
     }
 }
 

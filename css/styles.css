@@ -30,6 +30,17 @@ body {
     }
 }
 
+@keyframes float-up-fading-out {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-1em);
+        opacity: 0;
+    }
+}
+
 @keyframes modal-fade-in {
     from {
       opacity: 0;
@@ -41,7 +52,19 @@ body {
     }
 }
 
-@keyframes glow-spawned-cell {
+@keyframes bounce-merged-block {
+    0% {
+        scale: 1;
+    }
+    50% {
+        scale: 1.2;
+    }
+    100% {
+        scale: 1;
+    }
+}
+
+@keyframes glow-spawned-block {
     from {
         box-shadow: 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.5);
     }
@@ -106,8 +129,6 @@ body {
 }
 
 .glow-title {
-    -webkit-animation: glow-title 1s ease-in-out infinite alternate;
-    -moz-animation: glow-title 1s ease-in-out infinite alternate;
     animation: glow-title 1s ease-in-out infinite alternate;
 }
 
@@ -128,13 +149,26 @@ body {
 
 .score-container {
     font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
-    font-size: 1.2em;
+    font-size: 1.5em;
     font-weight: bold;
 }
 
 #score {
     color: black;
     text-shadow: none;
+}
+
+.score-increase {
+    position: absolute;
+    color: #f39c12;
+    font-size: 1em;
+    font-weight: bold;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.score-increase.animate {
+    animation: float-up-fading-out 1s ease-out forwards;
 }
 
 #game-board {
@@ -222,16 +256,21 @@ body {
     font-weight: bold;
     background-color: #eee4da;
     position: absolute;
-    animation: fade-in 0.5s ease;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
-    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, scale 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.game-block.new-game {
+    animation: fade-in 0.5s ease;
+}
+
+.game-block.bounce-merged {
+    animation: bounce-merged-block 0.2s ease;
 }
 
 .game-block.spawned {
     scale: 1.1;
-    -webkit-animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
-    -moz-animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
-    animation: fade-in 0.5s ease, glow-spawned-cell 1.5s infinite alternate linear 0.5s;
+    animation: fade-in 0.3s ease, glow-spawned-block 1.5s infinite alternate linear 0.2s;
 }
 
 /* Base styles for smaller values */
@@ -288,8 +327,6 @@ body {
 .game-block[data-value="32768"].merged,
 .game-block[data-value="65536"].merged,
 .game-block[data-value="131072"].merged {
-    -webkit-animation: glow 1.5s infinite alternate;
-    -moz-animation: glow 1.5s infinite alternate;
     animation: glow 1.5s infinite alternate;
 }
 

@@ -205,3 +205,14 @@ const removeIndices = (array, removedIndices, inplace = true) => {
     resultArray.length = writePointer;
     return resultArray;
 }
+
+/**
+ * Completely resets an element by replacing it with a new instance.
+ * @param {HTMLElement} element - The element to reset.
+ * @returns {HTMLElement} - The fresh new element.
+ */
+const resetElement = (element) => {
+    const newElement = document.createElement(element.tagName);
+    element.replaceWith(newElement);
+    return newElement;
+}
