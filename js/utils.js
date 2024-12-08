@@ -19,7 +19,7 @@ class RgbColor {
 
 /**
  * Randomly select an item from the given array
- * @template {T}
+ * @template T
  * @param {T[]} items The array of items
  * @returns {T|undefined} The randomly selected item or 'undefined' if the array is empty
  */
@@ -29,7 +29,7 @@ const randomItem = (items) => {
 
 /**
  * Randomly select an index within the given array
- * @template {T}
+ * @template T
  * @param {T[]} items The array of items
  * @returns {number} The randomly selected index or -1 if the array is empty
  */
@@ -42,7 +42,7 @@ const randomIdx = (items) => {
 
 /**
  * Randomly select an item from the given list based on the given weights
- * @template {T}
+ * @template T
  * @param {T[]} items The list of items
  * @param {number[]} weights The corresponding weights for every item
  * @returns {T|undefined} The randomly selected item or 'undefined' if the list is empty
@@ -100,7 +100,7 @@ const interpolateColor = (startColor, endColor, factor) => {
 const rgbToCss = (rgb) => `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 
 /**
- * @template {T}
+ * @template T
  * @param {T|T[]} value 
  * @param {boolean} newInstance 
  * @returns {T[]}
@@ -115,7 +115,7 @@ const asArray = (value, newInstance = false) => {
 }
 
 /**
- * @template {T}
+ * @template T
  * @param {T[]} array
  * @param {boolean} newInstance
  * @returns {T[]}
@@ -180,7 +180,7 @@ const boundValue = (value, bound, nextBound = 0) => {
 }
 
 /**
- * @template {T}
+ * @template T
  * @param {T[]} array
  * @param {Iterable<number>} removedIndices 
  * @param {boolean} inplace 
