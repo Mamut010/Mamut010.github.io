@@ -33,7 +33,7 @@ const volumeTooltip = document.getElementById('volume-tooltip');
 
 let score = 0;
 let stopped = false;
-let rendering = false;
+
 /**
  * @type {Set<Point>}
  */
@@ -89,6 +89,23 @@ const scoreIncreaseRecycler = (() => {
         .addEventListener('removed', evt =>  evt.target.className = '')
         .addEventListener('restored', evt => evt.target.classList.add('score-increase'));
     return recycler;
+})();
+
+const renderingSignaler = (() => {
+    let rendering = 0;
+    return {
+        start: () => {
+            rendering++;
+        },
+
+        finish: () => {
+            rendering = Math.max(rendering - 1, 0);
+        },
+
+        isRendering: () => {
+            return rendering !== 0;
+        }
+    }
 })();
 
 const setState = (key, state) => {
@@ -261,8 +278,6 @@ const addValueStyle = (cell, value) => {
  * @returns {Promise<void>}
  */
 const renderInitialGameBoard = async () => {
-    rendering = true;
-
     await conditionalEventListener(
         {
             items: game.getBoard().getOccupiedSlots(),
@@ -286,8 +301,6 @@ const renderInitialGameBoard = async () => {
             onEachEvent: cell => cell.classList.remove('new-game'),
         }
     );
-
-    rendering = false;
 }
 
 /**
@@ -296,8 +309,6 @@ const renderInitialGameBoard = async () => {
  * @param {Promise<void>}
  */
 const renderGame = async (moves, spawned) => {
-    rendering = true;
-
     await renderGameBoard(moves);
     
     renderScore(true);
@@ -306,8 +317,6 @@ const renderGame = async (moves, spawned) => {
     if (stopped) {
         gameOverSfx.play();
     }
-    
-    rendering = false;
 }
 
 const removeTemporaryVisuals = () => {
@@ -441,6 +450,8 @@ const resetStates = () => {
 }
 
 const reset = async () => {
+    renderingSignaler.start();
+    
     resetStates();
     initGameBoard();
     stopped = isGameOver();
@@ -448,6 +459,8 @@ const reset = async () => {
     renderScore(false);
     refreshGameOver();
     await renderInitialGameBoard();
+
+    renderingSignaler.finish();
     saveGameStates();
 }
 
@@ -465,12 +478,15 @@ const toggleDirectionButtons = () => {
  */
 const moveInDirection = (direction) => {
     return async () => {
-        if (rendering || stopped) {
+        if (renderingSignaler.isRendering() || stopped) {
             return;
         }
 
+        renderingSignaler.start();
+
         const moves = game.moveBlocks(direction);
         if (moves.size === 0) {
+            renderingSignaler.finish();
             return;
         }
 
@@ -482,6 +498,8 @@ const moveInDirection = (direction) => {
         stopped = isGameOver();
 
         await renderGame(moves, spawned);
+
+        renderingSignaler.finish();
         saveGameStates();
     }
 }
@@ -541,20 +559,6 @@ function updateAudioProgress() {
     volumeTooltip.textContent = `${percentage}%`;
     volumeTooltip.style.left = `${percentage}%`;
     muteButton.textContent = backgroundMusic.isMuted() ? '🔇' : '🔊';
-}
-
-const showInitialLoading = () => {
-    const spinner = document.createElement('div');
-    spinner.className = 'loader';
-
-    const loadingText = document.createElement('p');
-    loadingText.textContent = 'Loading...';
-
-    initialPopUpMessage.append(spinner, loadingText);
-}
-
-const showInitialLoaded = () => {
-    initialPopUpMessage.textContent = 'Click anywhere to play';
 }
 
 const initUi = () => {
@@ -617,12 +621,6 @@ const initListeners = () => {
     document.getElementById('reset-button')?.addEventListener('click', reset);
     document.getElementById('toggle-direction-button')?.addEventListener('click', toggleDirectionButtons);
 
-    const initialPopUpElement = document.getElementById('initial-pop-up');
-    initialPopUpElement?.addEventListener('click', () => {
-        backgroundMusic.play();
-        initialPopUpElement.remove();
-    });
-
     document.getElementById('next-bgm-button')?.addEventListener('click', () => {
         if (backgroundMusic.isFadingOut()) {
             return;
@@ -662,11 +660,36 @@ const initListeners = () => {
     });
 }
 
+const showInitialLoading = () => {
+    renderingSignaler.start();
+
+    const spinner = document.createElement('div');
+    spinner.className = 'loader';
+
+    const loadingText = document.createElement('p');
+    loadingText.textContent = 'Loading...';
+
+    initialPopUpMessage.append(spinner, loadingText);
+}
+
+const showInitialLoaded = () => {
+    initialPopUpMessage.textContent = 'Click anywhere to play';
+
+    const initialPopUpElement = document.getElementById('initial-pop-up');
+    initialPopUpElement.addEventListener('click', () => {
+        backgroundMusic.play();
+        initialPopUpElement.remove();
+        
+        renderingSignaler.finish();
+    });
+}
+
 const init = async () => {
     showInitialLoading();
     await initUi();
     await initGame();
     initListeners();
+
     requestAnimationFrame(showInitialLoaded);
 };
 
