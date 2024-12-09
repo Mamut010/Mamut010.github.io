@@ -21,6 +21,7 @@ const END_SCORE_SHADOW_BLUR = 3;
 const MAX_SCORE_THRESHOLD = 20000;
 const MAX_VALUE_STYLE = 1 << 17;
 
+const initialPopUpMessage = document.getElementById('initial-pop-up-message');
 const scoreElement = document.getElementById('score');
 const gameBoardElement = document.getElementById('game-board');
 const gameOverModalBoxElement = document.getElementById('game-over-modal-box');
@@ -34,9 +35,9 @@ let score = 0;
 let stopped = false;
 let rendering = false;
 /**
- * @type {Point[]}
+ * @type {Set<Point>}
  */
-const mergedPoints = [];
+const mergedPoints = new Set();
 /**
  * @type {Point|undefined}
  */
@@ -109,12 +110,25 @@ const getState = (key) => {
 const saveGameStates = () => {
     setState(SCORE_STATE_KEY, score);
     setState(BOARD_STATE_KEY, game.getBoard().toJson());
-    setState(MERGEDS_STATE_KEY, mergedPoints.map(point => point.toString()));
+    setState(MERGEDS_STATE_KEY, applyOnMergePoints(point => point.toString()));
     setState(SPAWNED_STATE_KEY, spawnedPoint?.toString());
 }
 
 const saveAudioStates = () => {
     setState(AUDIO_STATE_KEY, {volume: backgroundMusic.getVolume(), muted: backgroundMusic.isMuted()});
+}
+
+/**
+ * @template TReturn
+ * @param {(point: Point) => TReturn} fn
+ * @returns {TReturn[]}
+ */
+const applyOnMergePoints = (fn) => {
+    const result = [];
+    for (const point of mergedPoints.values()){
+        result.push(fn(point));
+    }
+    return result;
 }
 
 const restoreGameStates = () => {
@@ -135,7 +149,9 @@ const restoreGameStates = () => {
     const savedMergedsState = getState(MERGEDS_STATE_KEY);
     if (savedMergedsState) {
         const savedMergeds = JSON.parse(savedMergedsState);
-        mergedPoints.push(...savedMergeds.map(str => Point.parse(str)));
+        for (const str of savedMergeds) {
+            mergedPoints.add(Point.parse(str));
+        }
     }
 
     const savedSpawnedState = getState(SPAWNED_STATE_KEY);
@@ -255,15 +271,21 @@ const renderInitialGameBoard = async () => {
             eventFilter: evt => evt.animationName === 'fade-in',
         },
         {
-            onEachItem: cell => cell.classList.add('new-game'),
+            onEachItem: (cell, point) => {
+                if (point === spawnedPoint) {
+                    cell.classList.add('spawned');
+                }
+                else {
+                    cell.classList.add('new-game');
+                }
+
+                if (mergedPoints.has(point)) {
+                    cell.classList.add('merged');
+                }
+            },
             onEachEvent: cell => cell.classList.remove('new-game'),
         }
     );
-
-    mergedPoints.forEach(point => cellManager.get(point)?.classList.add('merged'));
-    if (spawnedPoint) {
-        cellManager.get(spawnedPoint)?.classList.add('spawned');
-    }
 
     rendering = false;
 }
@@ -289,8 +311,8 @@ const renderGame = async (moves, spawned) => {
 }
 
 const removeTemporaryVisuals = () => {
-    mergedPoints.forEach(point => cellManager.get(point)?.classList.remove('merged'));
-    mergedPoints.length = 0;
+    applyOnMergePoints(point => cellManager.get(point)?.classList.remove('merged'));
+    mergedPoints.clear();
     if (spawnedPoint) {
         cellManager.get(spawnedPoint)?.classList.remove('spawned');
     }
@@ -321,13 +343,14 @@ const renderGameBoard = async (moves) => {
             onEachItem: (cell, move) => {
                 const { from, to, merged } = move;
                 const cleanUp = cellManager.move(from, to);
+                
                 if (merged) {
                     mergeds.push({
                         cell,
                         cleanUp,
                         newValue: game.blockAt(to)?.getValue(),
                     });
-                    mergedPoints.push(to);
+                    mergedPoints.add(to);
                 }
             }
         }
@@ -412,7 +435,7 @@ const resetStates = () => {
     game.clearBoard();
     score = 0;
     stopped = false;
-    mergedPoints.length = 0;
+    mergedPoints.clear();
     spawnedPoint = undefined;
     cellManager.clear();
 }
@@ -467,7 +490,7 @@ const moveDown = moveInDirection(Direction.DOWN);
 const moveLeft = moveInDirection(Direction.LEFT);
 const moveRight = moveInDirection(Direction.RIGHT);
 
-const startGame = async () => {
+const initGame = async () => {
     if (!hasGameSavedStates()) {
         initGameBoard();
     }
@@ -520,12 +543,21 @@ function updateAudioProgress() {
     muteButton.textContent = backgroundMusic.isMuted() ? '🔇' : '🔊';
 }
 
+const showInitialLoading = () => {
+    const spinner = document.createElement('div');
+    spinner.className = 'loader';
+
+    const loadingText = document.createElement('p');
+    loadingText.textContent = 'Loading...';
+
+    initialPopUpMessage.append(spinner, loadingText);
+}
+
+const showInitialLoaded = () => {
+    initialPopUpMessage.textContent = 'Click anywhere to play';
+}
+
 const initUi = () => {
-    const initialPopUpMessage = document.getElementById('initial-pop-up-message');
-    if (initialPopUpMessage) {
-        initialPopUpMessage.textContent = 'Click anywhere to play';
-    }
-    
     const initBaseCellPromise = cellManager.initBaseCells();
     updateAudioProgress();
 
@@ -630,9 +662,12 @@ const initListeners = () => {
     });
 }
 
-restoreAudioStates();
-requestAnimationFrame(async () => {
+const init = async () => {
+    showInitialLoading();
     await initUi();
+    await initGame();
     initListeners();
-    await startGame();
-});
+    requestAnimationFrame(showInitialLoaded);
+};
+
+init();

@@ -2,6 +2,12 @@ body {
     font-family: "clear sans", "helvetica neue", Arial, sans-serif;
 }
 
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @keyframes fade-in {
     0% {
         opacity: 0;
@@ -95,6 +101,16 @@ body {
     padding: 1em;
     border-radius: 10px;
     text-align: center;
+}
+
+.loader {
+    border: 8px solid rgba(255, 255, 255, 0.3);
+    border-top: 8px solid white;
+    border-radius: 50%;
+    width: 2em;
+    height: 2em;
+    margin: 0 auto 1em;
+    animation: spin 1s linear infinite;
 }
 
 .page-container {
@@ -267,7 +283,7 @@ body {
 
 .game-block.spawned {
     scale: 1.1;
-    animation: fade-in 0.3s ease, glow-spawned-block 1.5s infinite alternate linear 0.2s;
+    animation: fade-in 0.5s ease, glow-spawned-block 1.5s infinite alternate linear 0.5s;
 }
 
 /* Base styles for smaller values */
