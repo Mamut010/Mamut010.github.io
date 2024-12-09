@@ -686,6 +686,8 @@ const showInitialLoaded = () => {
 
 const init = async () => {
     showInitialLoading();
+
+    restoreAudioStates();
     await initUi();
     await initGame();
     initListeners();
