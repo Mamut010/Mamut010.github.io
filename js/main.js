@@ -307,13 +307,10 @@ const renderInitialGameBoard = async () => {
         },
         {
             onEachItem: (cell, point) => {
+                cell.classList.add('new-game');
                 if (point === spawnedPoint) {
                     cell.classList.add('spawned');
                 }
-                else {
-                    cell.classList.add('new-game');
-                }
-
                 if (mergedPoints.has(point)) {
                     cell.classList.add('merged');
                 }

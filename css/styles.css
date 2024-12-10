@@ -283,6 +283,11 @@ body {
 
 .game-block.spawned {
     scale: 1.1;
+    animation: fade-in 0.3s ease, glow-spawned-block 1.5s infinite alternate linear 0.3s;
+}
+
+.game-block.new-game.spawned {
+    scale: 1.1;
     animation: fade-in 0.5s ease, glow-spawned-block 1.5s infinite alternate linear 0.5s;
 }
 
