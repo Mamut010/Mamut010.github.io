@@ -542,6 +542,41 @@ class BoardOperation {
     }
 }
 
+class BlockWithPoint {
+    /**
+     * @type {Block}
+     */
+    #block;
+
+    /**
+     * @type {Point}
+     */
+    #point;
+
+    /** 
+     * @param {Block} block
+     * @param {Point} point
+     */
+    constructor(block, point) {
+        this.#block = block;
+        this.#point = point;
+    }
+
+    /**
+     * @readonly
+     */
+    get block() {
+        return this.#block;
+    }
+
+    /**
+     * @readonly
+     */
+    get point() {
+        return this.#point;
+    }
+}
+
 /**
  * @interface
  */
@@ -553,11 +588,11 @@ class OnBlockMergedListener {
     }
 
     /**
-     * @param {Block} block1 
-     * @param {Block} block2 
-     * @param {Block} mergedBlock 
+     * @param {BlockWithPoint} result
+     * @param {BlockWithPoint} from
+     * @param {BlockWithPoint} to
      */
-    onBlockMerged(mergedBlock, block1, block2) {
+    onBlockMerged(result, from, to) {
         throw new Error('Method "onBlockMerged()" must be implemented.');
     }
 }
@@ -902,11 +937,6 @@ class GameBoardOperation extends StatefulBoardOperation {
     #isDstMerged;
 
     /**
-     * @type {boolean}
-     */
-    #didMove;
-
-    /**
      * @type {Map<Point, BlockMove>}
      */
     #moves;
@@ -928,7 +958,6 @@ class GameBoardOperation extends StatefulBoardOperation {
         super();
         this.#emptyCount = 0;
         this.#isDstMerged = false;
-        this.#didMove = false;
         this.#moves = new Map();
         this.#merger = merger;
         this.#listener = undefined;
@@ -940,7 +969,6 @@ class GameBoardOperation extends StatefulBoardOperation {
     prepare(listener = undefined) {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
-        this.#didMove = false;
         this.#moves.clear();
         this.#listener = listener;
     }
@@ -989,10 +1017,7 @@ class GameBoardOperation extends StatefulBoardOperation {
             offset--;
         }
 
-        if (success) {
-            this.#didMove = true;
-        }
-        return this.#didMove;
+        return success;
     }
 
     /**
@@ -1027,7 +1052,7 @@ class GameBoardOperation extends StatefulBoardOperation {
             this.#emptyCount++;
             success = true;
 
-            this.#notifyListener(mergedBlock, currentBlock, dstBlock);
+            this.#notifyListener(from, currentBlock, to, dstBlock, mergedBlock);
         }
 
         if (success) {
@@ -1038,12 +1063,19 @@ class GameBoardOperation extends StatefulBoardOperation {
     }
 
     /**
+     * @param {Point} fromPoint
+     * @param {Block} fromBlock
+     * @param {Point} toPoint
+     * @param {Block} toBlock
      * @param {Block} mergedBlock
-     * @param {Block} block1
-     * @param {Block} block2
      */
-    #notifyListener(mergedBlock, block1, block2) {
-        this.#listener?.onBlockMerged(mergedBlock, block1, block2);
+    #notifyListener(fromPoint, fromBlock, toPoint, toBlock, mergedBlock) {
+        if (this.#listener) {
+            const from = new BlockWithPoint(fromBlock, fromPoint);
+            const to = new BlockWithPoint(toBlock, toPoint);
+            const result = new BlockWithPoint(mergedBlock, toPoint);
+            this.#listener.onBlockMerged(result, from, to);
+        }
     }
 }
 

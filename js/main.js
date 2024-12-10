@@ -65,7 +65,10 @@ const game = (() => {
     const operation = new GameBoardOperation(merger);
     const game = new Game(board, strategyFactory, operation);
     game.setOnBlockMergedListener({
-        onBlockMerged: (mergedBlock) => score += mergedBlock.getValue()
+        onBlockMerged: (result) => {
+            score += result.block.getValue();
+            mergedPoints.add(result.point);
+        }
     });
     return game;
 })();
@@ -129,6 +132,11 @@ const saveGameStates = () => {
     setState(BOARD_STATE_KEY, game.getBoard().toJson());
     setState(MERGEDS_STATE_KEY, applyOnMergePoints(point => point.toString()));
     setState(SPAWNED_STATE_KEY, spawnedPoint?.toString());
+}
+
+const deleteGameStates = () => {
+    const gameStateKeys = [SCORE_STATE_KEY, BOARD_STATE_KEY, MERGEDS_STATE_KEY, SPAWNED_STATE_KEY];
+    gameStateKeys.forEach(key => setState(key, undefined));
 }
 
 const saveAudioStates = () => {
@@ -274,6 +282,18 @@ const addValueStyle = (cell, value) => {
     }
 }
 
+const clearMergeds = () => {
+    applyOnMergePoints(point => cellManager.get(point)?.classList.remove('merged'));
+    mergedPoints.clear();
+}
+
+const clearSpawned = () => {
+    if (spawnedPoint) {
+        cellManager.get(spawnedPoint)?.classList.remove('spawned');
+        spawnedPoint = undefined;
+    }
+}
+
 /**
  * @returns {Promise<void>}
  */
@@ -319,14 +339,6 @@ const renderGame = async (moves, spawned) => {
     }
 }
 
-const removeTemporaryVisuals = () => {
-    applyOnMergePoints(point => cellManager.get(point)?.classList.remove('merged'));
-    mergedPoints.clear();
-    if (spawnedPoint) {
-        cellManager.get(spawnedPoint)?.classList.remove('spawned');
-    }
-}
-
 /**
  * @typedef {{cell: HTMLElement, cleanUp: (() => void) | undefined, newValue: number}} MergedCellEntry
  */
@@ -354,12 +366,8 @@ const renderGameBoard = async (moves) => {
                 const cleanUp = cellManager.move(from, to);
                 
                 if (merged) {
-                    mergeds.push({
-                        cell,
-                        cleanUp,
-                        newValue: game.blockAt(to)?.getValue(),
-                    });
-                    mergedPoints.add(to);
+                    const newValue = game.blockAt(to)?.getValue();
+                    mergeds.push({ cell, cleanUp, newValue });
                 }
             }
         }
@@ -447,12 +455,14 @@ const resetStates = () => {
     mergedPoints.clear();
     spawnedPoint = undefined;
     cellManager.clear();
+
+    deleteGameStates();
 }
 
 const reset = async () => {
     renderingSignaler.start();
-    
     resetStates();
+
     initGameBoard();
     stopped = isGameOver();
 
@@ -460,8 +470,8 @@ const reset = async () => {
     refreshGameOver();
     await renderInitialGameBoard();
 
-    renderingSignaler.finish();
     saveGameStates();
+    renderingSignaler.finish();
 }
 
 const toggleDirectionButtons = () => {
@@ -483,6 +493,7 @@ const moveInDirection = (direction) => {
         }
 
         renderingSignaler.start();
+        clearMergeds();
 
         const moves = game.moveBlocks(direction);
         if (moves.size === 0) {
@@ -490,17 +501,14 @@ const moveInDirection = (direction) => {
             return;
         }
 
-        const spawned = game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
-
-        removeTemporaryVisuals();
-
-        spawnedPoint = spawned;
+        clearSpawned();
+        spawnedPoint = game.spawnBlockWeighted(SPAWNED_BLOCKS, SPAWNED_WEIGHTS);
         stopped = isGameOver();
 
-        await renderGame(moves, spawned);
+        await renderGame(moves, spawnedPoint);
 
-        renderingSignaler.finish();
         saveGameStates();
+        renderingSignaler.finish();
     }
 }
 const moveUp = moveInDirection(Direction.UP);
