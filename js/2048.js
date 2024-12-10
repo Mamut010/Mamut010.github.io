@@ -535,7 +535,7 @@ class BoardOperation {
      * @param {Point} point
      * @param {boolean} isNewRound
      * @param {PointMover} mover
-     * @returns {boolean}
+     * @returns {BlockMove|null}
      */
     operate(board, point, isNewRound, mover) {
         throw new Error('Method "operate()" must be implemented.');
@@ -614,13 +614,6 @@ class StatefulBoardOperation extends BoardOperation {
     prepare(listener = undefined) {
         throw new Error('Method "prepare()" must be implemented.');
     }
-
-    /**
-     * @returns {Map<Point, BlockMove>}
-     */
-    getMoves() {
-        throw new Error('Method "moveMap()" must be implemented.');
-    }
 }
 
 /**
@@ -637,7 +630,7 @@ class BoardTraversalStrategy {
      * @param {Board} board 
      * @param {BoardOperation} operation
      * @param {boolean} earlyTerminated
-     * @returns {boolean}
+     * @returns {Map<Point, BlockMove>}
      */
     execute(board, operation, earlyTerminated = false) {
         throw new Error('Method "execute()" must be implemented.');
@@ -731,21 +724,31 @@ class AbstractBoardTraversalStrategy extends BoardTraversalStrategy {
      * @param {Board} board 
      * @param {BoardOperation} operation
      * @param {boolean} earlyTerminated
+     * @returns {Map<Point, BlockMove>}
      */
     execute(board, operation, earlyTerminated = false) {
         const row = board.getRowCount();
         const column = board.getColumnCount();
 
-        let moved = false;
+        /**
+         * @type {Map<Point, BlockMove>}
+         */
+        const moves = new Map();
         for (const entry of this.traverse(row, column)) {
-            if (operation.operate(board, entry.point(), entry.isNewRound(), this.#mover)) {
+            const point = entry.point();
+            const isNewRound = entry.isNewRound();
+
+            const move = operation.operate(board, point, isNewRound, this.#mover);
+            if (move !== null) {
+                moves.set(point, move);
+
                 if (earlyTerminated) {
-                    return true;
+                    return moves;
                 }
-                moved = true;
             }
         }
-        return moved;
+
+        return moves;
     }
 }
 
@@ -937,11 +940,6 @@ class GameBoardOperation extends StatefulBoardOperation {
     #isDstMerged;
 
     /**
-     * @type {Map<Point, BlockMove>}
-     */
-    #moves;
-
-    /**
      * @type {BlockMerger}
      */
     #merger;
@@ -958,7 +956,6 @@ class GameBoardOperation extends StatefulBoardOperation {
         super();
         this.#emptyCount = 0;
         this.#isDstMerged = false;
-        this.#moves = new Map();
         this.#merger = merger;
         this.#listener = undefined;
     }
@@ -969,15 +966,7 @@ class GameBoardOperation extends StatefulBoardOperation {
     prepare(listener = undefined) {
         this.#emptyCount = 0;
         this.#isDstMerged = false;
-        this.#moves.clear();
         this.#listener = listener;
-    }
-
-    /**
-     * @returns {Map<Point, BlockMove>}
-     */
-    getMoves() {
-        return this.#moves;
     }
 
     /**
@@ -985,7 +974,7 @@ class GameBoardOperation extends StatefulBoardOperation {
      * @param {Point} point
      * @param {boolean} isNewRound 
      * @param {PointMover} mover
-     * @returns {boolean}
+     * @returns {BlockMove|null}
      */
     operate(board, point, isNewRound, mover) {
         if (isNewRound) {
@@ -996,34 +985,35 @@ class GameBoardOperation extends StatefulBoardOperation {
         const row = point.row();
         const column = point.column();
         if (!board.isWithinBound(row, column)) {
-            return false;
+            return null;
         }
         else if (!board.blockAt(row, column)) {
             this.#emptyCount++;
-            return false;
+            return null;
         }
 
         let offset = 1 + this.#emptyCount;
-        let success = false;
-        while (offset > 0 && !success) {
-            const dstPoint = mover.move(Point.of(row, column), offset);
+        let move = null;
+        while (offset > 0 && move === null) {
+            const dstPoint = mover.move(point, offset);
             const dstRow = dstPoint.row();
             const dstColumn = dstPoint.column();
             
             if (board.isWithinBound(dstRow, dstColumn)) {
-                success = this.#moveBlock(board, point, dstPoint);
+                move = this.#moveBlock(board, point, dstPoint);
             }
 
             offset--;
         }
 
-        return success;
+        return move;
     }
 
     /**
      * @param {Board} board 
      * @param {Point} from
      * @param {Point} to
+     * @returns {BlockMove|null}
      */
     #moveBlock(board, from, to) {
         const row = from.row();
@@ -1055,11 +1045,7 @@ class GameBoardOperation extends StatefulBoardOperation {
             this.#notifyListener(from, currentBlock, to, dstBlock, mergedBlock);
         }
 
-        if (success) {
-            this.#moves.set(from, new BlockMove(from, to, this.#isDstMerged));
-        }
-
-        return success;
+        return success ? new BlockMove(from, to, this.#isDstMerged) : null;
     }
 
     /**
@@ -1196,8 +1182,7 @@ class Game {
     moveBlocks(direction) {
         const strategy = this.#strategyFactory.create(direction);
         this.#operation.prepare(this.#listener);
-        strategy.execute(this.#board, this.#operation);
-        return new Map(this.#operation.getMoves());
+        return strategy.execute(this.#board, this.#operation);
     }
 
     /**
@@ -1208,6 +1193,7 @@ class Game {
         const strategy = this.#strategyFactory.create(direction);
         this.#operation.prepare();
         const tempBoard = Board.copy(this.#board);
-        return strategy.execute(tempBoard, this.#operation, true);
+        const moves = strategy.execute(tempBoard, this.#operation, true);
+        return moves.size !== 0;
     }
 }
