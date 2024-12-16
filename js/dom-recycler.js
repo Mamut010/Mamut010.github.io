@@ -80,14 +80,6 @@ class DomRecycler {
         return this;
     }
 
-    backupSize() {
-        return this.#backup.length;
-    }
-
-    isBackupEmpty() {
-        return this.backupSize() === 0;
-    }
-
     /**
      * Clear the backup and return all elements inside the backup.
      * @returns {TElement[]} All elements inside the backup

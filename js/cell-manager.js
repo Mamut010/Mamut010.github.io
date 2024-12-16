@@ -10,14 +10,14 @@ class CellManager {
     #container;
 
     /**
-     * @type {((cell: HTMLElement, value: number) => void) | undefined}
+     * @type {DomRecycler<HTMLDivElement>}
      */
-    #cellStyler;
+    #recycler;
 
     /**
-     * @type {(DomRecycler<HTMLElement> | undefined)}
+     * @type {((cell: HTMLElement, value: number) => void) | undefined}
      */
-    #cellRecycler = undefined;
+    #styler = undefined;
 
     /**
      * @type {Map<Point, BaseEntry>}
@@ -32,12 +32,21 @@ class CellManager {
     /**
      * @param {Game} game
      * @param {HTMLElement} container
-     * @param {((cell: HTMLElement, value: number) => void) | undefined} cellStyler
+     * @param {<TElement extends HTMLElement>(creator: () => TElement) => DomRecycler<TElement>} recyclerSupplier
      */
-    constructor(game, container, cellStyler = undefined) {
+    constructor(game, container, recyclerSupplier) {
         this.#game = game;
         this.#container = container;
-        this.#cellStyler = cellStyler;
+        this.#recycler = recyclerSupplier(() => document.createElement('div'));
+
+        this.#setupRecyclerListeners();
+    }
+
+    /**
+     * @param {((cell: HTMLElement, value: number) => void) | undefined} styler
+     */
+    setStyler(styler) {
+        this.#styler = styler;
     }
 
     /**
@@ -46,7 +55,6 @@ class CellManager {
     initBaseCells() {
         return new Promise((resolve, reject) => {
             try {
-                this.#initRecycler();
                 this.#initBaseEntries();
                 this.#attachResizeObserver();
                 resolve();
@@ -89,11 +97,11 @@ class CellManager {
      * @returns {HTMLElement|undefined}
      */
     create(point) {
-        if (!this.#cellRecycler || this.#movingCells.has(point)) {
+        if (this.#movingCells.has(point)) {
             return undefined;
         }
 
-        const cell = this.#cellRecycler.acquire();
+        const cell = this.#recycler.acquire();
         const element = cell.element;
 
         this.#setCellPosAndBound(element, point);
@@ -121,7 +129,7 @@ class CellManager {
     /**
      * @param {Point} from 
      * @param {Point} to
-     * @returns {(() => void) | undefined}
+     * @returns {(() => void) | undefined} The cleanup function
      */
     move(from, to) {
         const cell = this.#movingCells.get(from);
@@ -144,9 +152,8 @@ class CellManager {
         return cleanUp;
     }
 
-    #initRecycler() {
-        this.#cellRecycler = new DomRecycler(() => document.createElement('div'));
-        this.#cellRecycler
+    #setupRecyclerListeners() {
+        this.#recycler
             .addEventListener('created', (evt) => {
                 const cell = evt.target;
                 this.#container.appendChild(cell);
@@ -210,11 +217,11 @@ class CellManager {
         if (!value) {
             cell.textContent = '';
         }
-        else if (!this.#cellStyler) {
+        else if (!this.#styler) {
             cell.textContent = value.toString();
         }
         else {
-            this.#cellStyler(cell, value);
+            this.#styler(cell, value);
         }
     }
 }

@@ -74,11 +74,13 @@ const game = (() => {
 })();
 
 const cellManager = (() => {
-    return new CellManager(
+    const manager = new CellManager(
         game,
         gameBoardElement,
-        (cell, value) => addValueStyle(cell, value)
+        (creator) => new DomRecycler(creator)
     );
+    manager.setStyler((cell, value) => addValueStyle(cell, value));
+    return manager;
 })();
 
 const scoreIncreaseRecycler = (() => {
