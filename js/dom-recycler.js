@@ -8,7 +8,7 @@ class DomRecycler {
     #creator;
 
     /**
-     * @type {Map<EventType, DomRecyclerEventListenerEntry<TElement>[]>}
+     * @type {Map<DomRecyclerEventType[keyof typeof DomRecyclerEventType], DomRecyclerEventListenerEntry<TElement>[]>}
      */
     #eventListeners = new Map();
 
