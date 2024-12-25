@@ -25,7 +25,7 @@ class CellManager {
     #baseEntries = new Map();
 
     /**
-     * @type {Map<Point, DomRecyclerReadOnlyEntry<HTMLElement>>}
+     * @type {Map<Point, DomRecyclerRemovableEntry<HTMLElement>>}
      */
     #movingCells = new Map();
 

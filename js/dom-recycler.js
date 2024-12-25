@@ -91,7 +91,7 @@ class DomRecycler {
     }
 
     /**
-     * @returns {DomRecyclerReadOnlyEntry<TElement>}
+     * @returns {DomRecyclerRemovableEntry<TElement>}
      */
     acquire() {
         let entry = this.#backup.pop();
@@ -174,10 +174,10 @@ class DomRecycler {
 /**
  * @template {HTMLElement} TElement
  */
-class DomRecyclerReadOnlyEntry {
+class DomRecyclerRemovableEntry {
     constructor() {
-        if(this.constructor === DomRecyclerReadOnlyEntry) {
-            throw new Error('Interface "DomRecyclerReadOnlyEntry" cannot be instantiated as it is an interface.');
+        if(this.constructor === DomRecyclerRemovableEntry) {
+            throw new Error('Interface "DomRecyclerRemovableEntry" cannot be instantiated as it is an interface.');
         }
     }
 
@@ -199,9 +199,9 @@ class DomRecyclerReadOnlyEntry {
 
 /**
  * @template {HTMLElement} TElement
- * @implements {DomRecyclerReadOnlyEntry<TElement>} 
+ * @implements {DomRecyclerRemovableEntry<TElement>} 
  */
-class DomRecyclerEntry extends DomRecyclerReadOnlyEntry {
+class DomRecyclerEntry extends DomRecyclerRemovableEntry {
     /**
      * @type {TElement}
      */
