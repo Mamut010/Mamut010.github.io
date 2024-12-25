@@ -184,8 +184,11 @@ class CellManager {
     }
 
     #handleResize() {
+        for (const entry of this.#baseEntries.values()) {
+            entry.recalculateDimensions();
+        }
+
         for (const [point, cell] of this.#movingCells.entries()) {
-            this.#baseEntries.get(point)?.recalculateDimensions();
             const element = cell.element;
             this.#setCellPosAndBound(element, point);
             this.#invokeCellStyler(element, point);
