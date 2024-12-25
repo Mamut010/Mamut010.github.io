@@ -184,14 +184,14 @@ class CellManager {
     }
 
     #handleResize() {
-        for (const entry of this.#baseEntries.values()) {
+        for (const [point, entry] of this.#baseEntries.entries()) {
             entry.recalculateDimensions();
-        }
 
-        for (const [point, cell] of this.#movingCells.entries()) {
-            const element = cell.element;
-            this.#setCellPosAndBound(element, point);
-            this.#invokeCellStyler(element, point);
+            const element = this.#movingCells.get(point)?.element;
+            if (element) {
+                this.#setCellPosAndBound(element, point);
+                this.#invokeCellStyler(element, point);
+            }
         }
     }
 
