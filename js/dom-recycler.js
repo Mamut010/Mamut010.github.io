@@ -103,21 +103,21 @@ class DomRecycler {
                 element,
                 (e) => {
                     this.#addToBackup(e);
-                    this.#notifyListeners('removed', e);
+                    this.#notifyListeners(DomRecyclerEventType.REMOVED, e);
                 },
                 (e) => {
                     this.#restoreStateFromBackup(e);
-                    this.#notifyListeners('restored', e);
+                    this.#notifyListeners(DomRecyclerEventType.RESTORED, e);
                 }
             );
 
-            this.#notifyListeners('created', entry);
+            this.#notifyListeners(DomRecyclerEventType.CREATED, entry);
         }
         else {
             entry.restore();
         }
 
-        this.#notifyListeners('invoked', entry);
+        this.#notifyListeners(DomRecyclerEventType.INVOKED, entry);
 
         return entry;
     }

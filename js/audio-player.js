@@ -410,7 +410,7 @@ class AudioPlayer {
         }
 
         this.#audio.pause();
-        this.#notifyListeners('pause');
+        this.#notifyListeners(AudioEventType.PAUSE);
         return this;
     }
 
@@ -438,7 +438,7 @@ class AudioPlayer {
         }
 
         this.#cleanUp();
-        this.#notifyListeners('stop');
+        this.#notifyListeners(AudioEventType.STOP);
         return this;
     }
 
@@ -504,7 +504,7 @@ class AudioPlayer {
     #startAudio(fromPaused) {
         this.#audio
             .play()
-            .then(() => this.#notifyListeners(fromPaused ? 'resume' : 'play'))
+            .then(() => this.#notifyListeners(fromPaused ? AudioEventType.RESUME : AudioEventType.PLAY))
             .catch(err => console.error('Playback error:', err));
     }
 
