@@ -178,41 +178,37 @@ class RewardPipeline {
         };
     }
 }
+// ===== Reward Item Config =====
+function defaultRewardItems() {
+    return [
+        { id: "sr", name: "Super Rare Reward", rate: 1, color: "#f0a830", borderColor: "#f0a830" },
+        { id: "rare", name: "Rare Reward", rate: 15, color: "#4f8ef7", borderColor: "#4f8ef7" },
+        { id: "common", name: "Common Reward", rate: 84, color: "#8b96a5", borderColor: "#444f5a" },
+    ];
+}
 // ===== Reward Domain =====
-const Rarity = {
-    SuperRare: "Super Rare",
-    Rare: "Rare",
-    Common: "Common",
-};
-const RarityConfig = {
-    [Rarity.Common]: { label: "Common", color: "#8b96a5", emoji: "⚪" },
-    [Rarity.Rare]: { label: "Rare", color: "#4f8ef7", emoji: "🔵" },
-    [Rarity.SuperRare]: { label: "Super Rare", color: "#f0a830", emoji: "⭐" },
-};
 class Reward {
-    constructor(name, rarity) {
+    constructor(id, name) {
+        this.id = id;
         this.name = name;
-        this.rarity = rarity;
     }
     static get Empty() {
-        return new Reward("", Rarity.Common);
+        return new Reward("__empty__", "");
     }
     equals(other) {
-        return this.name === other.name;
+        return this.id === other.id;
     }
 }
-class FixedRateRewardTreeFactory {
-    constructor(rates) {
-        this.rates = rates;
+class DynamicRewardTreeFactory {
+    constructor(items) {
+        this.items = items;
     }
     async create(executionContext) {
-        const commonNode = new RewardTreeNode(new Reward("Common Reward", Rarity.Common));
-        const rareNode = new RewardTreeNode(new Reward("Rare Reward", Rarity.Rare));
-        const superRareNode = new RewardTreeNode(new Reward("Super Rare Reward", Rarity.SuperRare));
         const rootNode = new RewardTreeNode(Reward.Empty);
-        rootNode.connect(commonNode, this.rates.get(Rarity.Common) ?? 0);
-        rootNode.connect(rareNode, this.rates.get(Rarity.Rare) ?? 0);
-        rootNode.connect(superRareNode, this.rates.get(Rarity.SuperRare) ?? 0);
+        for (const item of this.items) {
+            const node = new RewardTreeNode(new Reward(item.id, item.name));
+            rootNode.connect(node, item.rate);
+        }
         return new RewardTree(rootNode);
     }
 }
@@ -240,19 +236,15 @@ class HardPityInterceptor {
         return { rewards: [leastReward], path: result.path };
     }
     getLeastWeightedReward(edges) {
-        const valid = edges.filter(e => e.weight > 0 && e.target.reward);
-        return valid.reduce((min, e) => e.weight < min.weight ? e : min, valid[0]).target.reward;
+        const valid = edges.filter(e => e.weight > 0 && e.target.reward != null);
+        if (valid.length === 0)
+            return Reward.Empty;
+        return valid.reduce((min, e) => e.weight < min.weight ? e : min).target.reward;
     }
 }
 // ===== Pipeline Factory =====
-function buildPipeline(superRarePct, rarePct, pityEnabled, pityThreshold) {
-    const commonPct = 100 - superRarePct - rarePct;
-    const rates = new Map([
-        [Rarity.SuperRare, superRarePct],
-        [Rarity.Rare, rarePct],
-        [Rarity.Common, commonPct],
-    ]);
-    const treeFactory = new FixedRateRewardTreeFactory(rates);
+function buildPipeline(items, pityEnabled, pityThreshold) {
+    const treeFactory = new DynamicRewardTreeFactory(items);
     const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
     const collector = new SubtreeRewardCollector();
     const resolver = new RewardResolver(walker, collector);
@@ -266,16 +258,12 @@ function buildPipeline(superRarePct, rarePct, pityEnabled, pityThreshold) {
 }
 class RewarderApp {
     constructor() {
-        this.superRarePct = 1.00;
-        this.rarePct = 15.00;
+        this.rewardItems = defaultRewardItems();
         this.pityEnabled = true;
         this.pityThreshold = 90;
+        this.nextItemId = 1;
         this.totalRolls = 0;
-        this.rarityCounts = new Map([
-            [Rarity.Common, 0],
-            [Rarity.Rare, 0],
-            [Rarity.SuperRare, 0],
-        ]);
+        this.rewardCounts = new Map();
         this.history = [];
         this.pityInterceptor = null;
         this.rng = new MathRandomNumberGenerator();
@@ -283,30 +271,27 @@ class RewarderApp {
     }
     init() {
         this.rebuildPipeline();
-        this.bindEvents();
+        this.bindStaticEvents();
         this.renderAll();
     }
     rebuildPipeline() {
-        const { pipeline, pityInterceptor } = buildPipeline(this.superRarePct, this.rarePct, this.pityEnabled, this.pityThreshold);
+        const { pipeline, pityInterceptor } = buildPipeline(this.rewardItems, this.pityEnabled, this.pityThreshold);
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
     }
-    bindEvents() {
-        const srInput = document.getElementById("sr-rate");
-        const rareInput = document.getElementById("rare-rate");
+    configById(id) {
+        return this.rewardItems.find(item => item.id === id);
+    }
+    totalRate() {
+        return this.rewardItems.reduce((sum, item) => sum + item.rate, 0);
+    }
+    isRateValid() {
+        return this.rewardItems.length > 0 && Math.abs(this.totalRate() - 100) < 0.001;
+    }
+    // ===== Events =====
+    bindStaticEvents() {
         const pityToggle = document.getElementById("pity-toggle");
         const pityThreshInput = document.getElementById("pity-threshold");
-        const onRateChange = () => {
-            this.superRarePct = parseFloat(srInput.value) || 0;
-            this.rarePct = parseFloat(rareInput.value) || 0;
-            this.rebuildPipeline();
-            this.updateRateDisplay();
-            this.renderPityProgress();
-        };
-        srInput.addEventListener("input", onRateChange);
-        srInput.addEventListener("change", onRateChange);
-        rareInput.addEventListener("input", onRateChange);
-        rareInput.addEventListener("change", onRateChange);
         pityToggle.addEventListener("change", () => {
             this.pityEnabled = pityToggle.checked;
             const row = document.getElementById("pity-config-row");
@@ -325,27 +310,79 @@ class RewarderApp {
         document.getElementById("btn-roll-10").addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100").addEventListener("click", () => this.doRolls(100));
         document.getElementById("btn-reset").addEventListener("click", () => this.resetStats());
+        document.getElementById("btn-add-reward").addEventListener("click", () => this.addRewardItem());
+        this.bindRewardListEvents();
     }
-    updateRateDisplay() {
-        const commonPct = 100 - this.superRarePct - this.rarePct;
-        const display = document.getElementById("common-rate-display");
-        if (display)
-            display.textContent = commonPct.toFixed(2) + "%";
-        const invalid = commonPct < 0 || this.superRarePct < 0 || this.rarePct < 0;
-        const warning = document.getElementById("rate-warning");
-        if (warning)
-            warning.style.display = invalid ? "block" : "none";
-        const rollIds = ["btn-roll", "btn-roll-10", "btn-roll-100"];
-        rollIds.forEach(id => {
-            const btn = document.getElementById(id);
-            if (btn)
-                btn.disabled = invalid || this.isRolling;
+    bindRewardListEvents() {
+        const list = document.getElementById("reward-list");
+        if (!list)
+            return;
+        list.addEventListener("input", (e) => {
+            const target = e.target;
+            const row = target.closest(".reward-config-row");
+            if (!row)
+                return;
+            const item = this.configById(row.dataset.id);
+            if (!item)
+                return;
+            if (target.classList.contains("reward-rate-input")) {
+                item.rate = parseFloat(target.value) || 0;
+                this.updateRateSummary();
+                this.rebuildPipeline();
+            }
+            else if (target.classList.contains("reward-color-input")) {
+                item.color = target.value;
+                this.renderStats();
+                this.renderHistory();
+            }
+            else if (target.classList.contains("reward-border-input")) {
+                item.borderColor = target.value;
+                this.renderStats();
+                this.renderHistory();
+            }
+        });
+        list.addEventListener("change", (e) => {
+            const target = e.target;
+            const row = target.closest(".reward-config-row");
+            if (!row)
+                return;
+            const item = this.configById(row.dataset.id);
+            if (!item)
+                return;
+            if (target.classList.contains("reward-name-input")) {
+                item.name = target.value.trim() || "Reward";
+                this.rebuildPipeline();
+            }
+        });
+        list.addEventListener("click", (e) => {
+            const btn = e.target.closest(".btn-delete-reward");
+            if (!btn)
+                return;
+            const row = btn.closest(".reward-config-row");
+            if (!row)
+                return;
+            this.removeRewardItem(row.dataset.id);
         });
     }
+    addRewardItem() {
+        const id = `item-${this.nextItemId++}`;
+        this.rewardItems.push({ id, name: "New Reward", rate: 0, color: "#c084fc", borderColor: "#c084fc" });
+        this.rebuildPipeline();
+        this.renderRewardEditor();
+        this.updateRateSummary();
+        const input = document.querySelector(`.reward-config-row[data-id="${id}"] .reward-name-input`);
+        input?.focus();
+        input?.select();
+    }
+    removeRewardItem(id) {
+        this.rewardItems = this.rewardItems.filter(item => item.id !== id);
+        this.rebuildPipeline();
+        this.renderRewardEditor();
+        this.updateRateSummary();
+    }
+    // ===== Rolls =====
     async doRolls(count) {
-        if (this.isRolling)
-            return;
-        if (100 - this.superRarePct - this.rarePct < 0)
+        if (this.isRolling || !this.isRateValid())
             return;
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
@@ -353,9 +390,9 @@ class RewarderApp {
         const animate = count <= ANIMATED_MAX;
         for (let i = 0; i < count; i++) {
             const result = await this.pipeline.invoke({ rng: this.rng });
-            const reward = result.rewards[0] ?? new Reward("Unknown", Rarity.Common);
+            const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
             const rollNum = ++this.totalRolls;
-            this.rarityCounts.set(reward.rarity, (this.rarityCounts.get(reward.rarity) ?? 0) + 1);
+            this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
             this.history.unshift({ rollNum, reward });
             if (this.history.length > 200)
                 this.history.pop();
@@ -386,24 +423,56 @@ class RewarderApp {
     }
     resetStats() {
         this.totalRolls = 0;
-        this.rarityCounts = new Map([
-            [Rarity.Common, 0],
-            [Rarity.Rare, 0],
-            [Rarity.SuperRare, 0],
-        ]);
+        this.rewardCounts = new Map();
         this.history = [];
         this.rebuildPipeline();
-        this.renderAll();
-    }
-    renderAll() {
-        const row = document.getElementById("pity-config-row");
-        if (row)
-            row.style.display = this.pityEnabled ? "flex" : "none";
-        this.updateRateDisplay();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
         this.renderHistory();
+    }
+    // ===== Renders =====
+    renderAll() {
+        const row = document.getElementById("pity-config-row");
+        if (row)
+            row.style.display = this.pityEnabled ? "flex" : "none";
+        this.renderRewardEditor();
+        this.updateRateSummary();
+        this.renderLatestResult(null, 0);
+        this.renderStats();
+        this.renderPityProgress();
+        this.renderHistory();
+    }
+    renderRewardEditor() {
+        const list = document.getElementById("reward-list");
+        if (!list)
+            return;
+        const canDelete = this.rewardItems.length > 1;
+        list.innerHTML = this.rewardItems.map(item => `
+            <div class="reward-config-row" data-id="${item.id}">
+                <div class="color-swatches">
+                    <input type="color" class="color-swatch reward-color-input" value="${item.color}" title="Text color">
+                    <input type="color" class="color-swatch reward-border-input" value="${item.borderColor}" title="Border color">
+                </div>
+                <input type="text" class="reward-name-input" value="${escapeHtml(item.name)}" placeholder="Name">
+                <div class="reward-rate-group">
+                    <input type="number" class="reward-rate-input" value="${item.rate}" min="0" max="100" step="0.01">
+                    <span class="rate-unit">%</span>
+                </div>
+                <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>\u00d7</button>
+            </div>
+        `).join("");
+    }
+    updateRateSummary() {
+        const total = this.totalRate();
+        const totalEl = document.getElementById("total-rate");
+        if (totalEl)
+            totalEl.textContent = total.toFixed(2);
+        const valid = this.isRateValid();
+        const warning = document.getElementById("rate-warning");
+        if (warning)
+            warning.style.display = valid ? "none" : "inline";
+        this.setRollButtonsDisabled(!valid || this.isRolling);
     }
     renderLatestResult(reward, rollNum) {
         const container = document.getElementById("latest-result");
@@ -413,20 +482,18 @@ class RewarderApp {
             container.innerHTML = `<div class="idle-msg">Roll to get started!</div>`;
             return;
         }
-        const cfg = RarityConfig[reward.rarity];
-        const key = rarityKey(reward.rarity);
+        const cfg = this.configById(reward.id);
+        const color = cfg?.color ?? "#eee";
+        const borderColor = cfg?.borderColor ?? "#444";
         container.innerHTML = `
-            <div class="reward-card rarity-${key}" style="--rarity-color:${cfg.color}">
-                <div class="reward-emoji">${cfg.emoji}</div>
-                <div class="reward-name">${reward.name}</div>
-                <div class="reward-rarity">${reward.rarity}</div>
+            <div class="reward-card" style="--rarity-color:${borderColor};--text-color:${color}">
+                <div class="reward-name">${escapeHtml(reward.name)}</div>
                 <div class="reward-roll-num">Roll #${rollNum}</div>
             </div>
         `;
         const card = container.querySelector(".reward-card");
         if (card) {
-            card.classList.remove("pop-in");
-            void card.offsetWidth; // force reflow
+            void card.offsetWidth;
             card.classList.add("pop-in");
         }
     }
@@ -435,23 +502,25 @@ class RewarderApp {
         const totalEl = document.getElementById("stat-total");
         if (totalEl)
             totalEl.textContent = String(total);
-        for (const rarity of Object.values(Rarity)) {
-            const count = this.rarityCounts.get(rarity) ?? 0;
+        const container = document.getElementById("stats-rows");
+        if (!container)
+            return;
+        container.innerHTML = this.rewardItems.map(item => {
+            const count = this.rewardCounts.get(item.id) ?? 0;
             const pct = total > 0 ? (count / total) * 100 : 0;
-            const key = rarityKey(rarity);
-            const cfg = RarityConfig[rarity];
-            const countEl = document.getElementById(`stat-count-${key}`);
-            const pctEl = document.getElementById(`stat-pct-${key}`);
-            const barEl = document.getElementById(`stat-bar-${key}`);
-            if (countEl)
-                countEl.textContent = String(count);
-            if (pctEl)
-                pctEl.textContent = `${pct.toFixed(1)}%`;
-            if (barEl) {
-                barEl.style.width = `${pct}%`;
-                barEl.style.backgroundColor = cfg.color;
-            }
-        }
+            return `
+                <div class="stat-row">
+                    <div class="stat-label" style="color:${item.color}">${escapeHtml(item.name)}</div>
+                    <div class="stat-bar-track">
+                        <div class="stat-bar" style="width:${pct}%;background-color:${item.borderColor}"></div>
+                    </div>
+                    <div class="stat-values">
+                        <span class="stat-count">${count}</span>
+                        <span class="stat-pct">${pct.toFixed(1)}%</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
     }
     renderPityProgress() {
         const section = document.getElementById("pity-section");
@@ -466,13 +535,19 @@ class RewarderApp {
         const threshold = this.pityThreshold;
         const pct = Math.min(100, (counter / threshold) * 100);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+        const targetName = [...this.rewardItems]
+            .filter(i => i.rate > 0)
+            .sort((a, b) => a.rate - b.rate)[0]?.name ?? "rarest reward";
         const countEl = document.getElementById("pity-count");
         const thresholdEl = document.getElementById("pity-threshold-display");
+        const targetEl = document.getElementById("pity-target-name");
         const barEl = document.getElementById("pity-bar");
         if (countEl)
             countEl.textContent = String(counter);
         if (thresholdEl)
             thresholdEl.textContent = String(threshold);
+        if (targetEl)
+            targetEl.textContent = targetName;
         if (barEl) {
             barEl.style.width = `${pct}%`;
             barEl.style.backgroundColor = urgency;
@@ -487,26 +562,24 @@ class RewarderApp {
             return;
         }
         container.innerHTML = this.history.slice(0, 60).map(entry => {
-            const cfg = RarityConfig[entry.reward.rarity];
-            const key = rarityKey(entry.reward.rarity);
+            const cfg = this.configById(entry.reward.id);
+            const color = cfg?.color ?? "#eee";
+            const borderColor = cfg?.borderColor ?? "#555";
             return `
-                <div class="history-entry history-${key}">
+                <div class="history-entry" style="border-left-color:${borderColor}">
                     <span class="history-num">#${entry.rollNum}</span>
-                    <span class="history-icon">${cfg.emoji}</span>
-                    <span class="history-reward">${entry.reward.name}</span>
-                    <span class="history-rarity" style="color:${cfg.color}">${entry.reward.rarity}</span>
+                    <span class="history-reward" style="color:${color}">${escapeHtml(entry.reward.name)}</span>
                 </div>
             `;
         }).join("");
     }
 }
-function rarityKey(rarity) {
-    return rarity.toLowerCase().replace(" ", "-");
+function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 document.addEventListener("DOMContentLoaded", () => {
-    const app = new RewarderApp();
-    app.init();
+    new RewarderApp().init();
 });
