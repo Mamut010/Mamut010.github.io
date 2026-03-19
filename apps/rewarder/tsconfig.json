@@ -38,6 +38,7 @@
         "src/HardPityInterceptor.ts",
         "src/PipelineFactory.ts",
         "src/utils/DomUtils.ts",
+        "src/Storage.ts",
         "./src/app.ts"
     ]
 }

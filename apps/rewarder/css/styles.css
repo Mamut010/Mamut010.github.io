@@ -363,6 +363,73 @@ body {
 .pity-target-select:focus { outline: none; border-color: var(--accent); }
 .pity-target-select option { background: var(--surface); }
 
+/* ===== Profile Picker ===== */
+.profile-section {
+    padding-bottom: 0.8em;
+}
+
+.profile-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.profile-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3em 0.5em;
+    font-family: var(--font);
+    font-size: 0.8em;
+    cursor: pointer;
+}
+.profile-select:focus { outline: none; border-color: var(--accent); }
+.profile-select option { background: var(--surface); }
+
+.profile-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.profile-name-label {
+    font-size: 0.75em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.profile-name-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3em 0.5em;
+    font-family: var(--font);
+    font-size: 0.8em;
+}
+.profile-name-input:focus { outline: none; border-color: var(--accent); }
+
+.btn-icon {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3em 0.6em;
+    cursor: pointer;
+    font-size: 0.95em;
+    line-height: 1;
+    font-family: var(--font);
+    flex-shrink: 0;
+}
+.btn-icon:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ===== Roll Buttons ===== */
 .roll-buttons {
     display: flex;
