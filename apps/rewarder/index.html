@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Reward System</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="../../css/reset.css">
+        <link rel="stylesheet" href="./css/styles.css">
+    </head>
+    <body>
+        <div class="page-wrapper">
+
+            <header class="app-header">
+                <a class="back-link" href="../../">← App Center</a>
+                <h1 class="app-title">Reward System</h1>
+                <div class="header-spacer"></div>
+            </header>
+
+            <div class="app-layout">
+
+                <!-- ===== Config Sidebar ===== -->
+                <aside class="config-panel">
+
+                    <section class="config-section">
+                        <h2 class="section-title">Drop Rates</h2>
+                        <div class="rate-row">
+                            <label class="rate-label sr" for="sr-rate">Super Rare</label>
+                            <div class="rate-input-group">
+                                <input type="number" id="sr-rate" class="rate-input"
+                                    value="1.00" min="0.01" max="99.98" step="0.01">
+                                <span class="rate-unit">%</span>
+                            </div>
+                        </div>
+                        <div class="rate-row">
+                            <label class="rate-label rare" for="rare-rate">Rare</label>
+                            <div class="rate-input-group">
+                                <input type="number" id="rare-rate" class="rate-input"
+                                    value="15.00" min="0.01" max="99.98" step="0.01">
+                                <span class="rate-unit">%</span>
+                            </div>
+                        </div>
+                        <div class="rate-row">
+                            <label class="rate-label common">Common</label>
+                            <div class="rate-input-group">
+                                <span class="rate-display" id="common-rate-display">84.00%</span>
+                            </div>
+                        </div>
+                        <div class="rate-warning" id="rate-warning">⚠ Rates exceed 100%</div>
+                    </section>
+
+                    <section class="config-section">
+                        <h2 class="section-title">Pity System</h2>
+                        <div class="pity-toggle-row">
+                            <label class="toggle-label" for="pity-toggle">Hard Pity</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="pity-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="pity-config-row" id="pity-config-row">
+                            <label class="pity-label" for="pity-threshold">Threshold</label>
+                            <input type="number" id="pity-threshold" class="pity-input"
+                                value="90" min="1" max="9999" step="1">
+                            <span class="pity-unit">rolls</span>
+                        </div>
+                    </section>
+
+                    <section class="config-section">
+                        <div class="roll-buttons">
+                            <button class="btn btn-roll"       id="btn-roll">Roll ×1</button>
+                            <button class="btn btn-roll-multi" id="btn-roll-10">Roll ×10</button>
+                            <button class="btn btn-roll-multi" id="btn-roll-100">Roll ×100</button>
+                        </div>
+                        <button class="btn btn-reset" id="btn-reset">Reset Stats</button>
+                    </section>
+
+                </aside>
+
+                <!-- ===== Main Content ===== -->
+                <main class="main-content">
+
+                    <!-- Latest Result -->
+                    <div class="result-section" id="latest-result">
+                        <div class="idle-msg">Roll to get started!</div>
+                    </div>
+
+                    <!-- Statistics -->
+                    <div class="stats-section">
+                        <div class="stats-header">
+                            <h2 class="section-title" style="margin-bottom:0">Statistics</h2>
+                            <span class="total-badge">Total: <span id="stat-total">0</span> rolls</span>
+                        </div>
+                        <div class="stat-row">
+                            <div class="stat-label sr">⭐ Super Rare</div>
+                            <div class="stat-bar-track">
+                                <div class="stat-bar" id="stat-bar-super-rare"></div>
+                            </div>
+                            <div class="stat-values">
+                                <span class="stat-count" id="stat-count-super-rare">0</span>
+                                <span class="stat-pct"   id="stat-pct-super-rare">0.0%</span>
+                            </div>
+                        </div>
+                        <div class="stat-row">
+                            <div class="stat-label rare">🔵 Rare</div>
+                            <div class="stat-bar-track">
+                                <div class="stat-bar" id="stat-bar-rare"></div>
+                            </div>
+                            <div class="stat-values">
+                                <span class="stat-count" id="stat-count-rare">0</span>
+                                <span class="stat-pct"   id="stat-pct-rare">0.0%</span>
+                            </div>
+                        </div>
+                        <div class="stat-row">
+                            <div class="stat-label common">⚪ Common</div>
+                            <div class="stat-bar-track">
+                                <div class="stat-bar" id="stat-bar-common"></div>
+                            </div>
+                            <div class="stat-values">
+                                <span class="stat-count" id="stat-count-common">0</span>
+                                <span class="stat-pct"   id="stat-pct-common">0.0%</span>
+                            </div>
+                        </div>
+
+                        <!-- Pity progress bar -->
+                        <div class="pity-progress-section" id="pity-section">
+                            <div class="pity-header">
+                                <span>Pity Counter</span>
+                                <span>
+                                    <span id="pity-count">0</span> /
+                                    <span id="pity-threshold-display">90</span>
+                                </span>
+                            </div>
+                            <div class="pity-bar-track">
+                                <div class="pity-bar" id="pity-bar"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History -->
+                    <div class="history-section">
+                        <h2 class="section-title">History</h2>
+                        <div class="history-log" id="history-log">
+                            <div class="history-empty">No rolls yet</div>
+                        </div>
+                    </div>
+
+                </main>
+            </div>
+        </div>
+
+        <script src="./js/rewarder.js"></script>
+    </body>
+</html>

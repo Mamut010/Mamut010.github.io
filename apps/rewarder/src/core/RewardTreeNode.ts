@@ -1,15 +1,15 @@
 class RewardTreeNode<TReward> implements IRewardTreeNode<TReward> {
-    private readonly _reward: TReward;
+    private readonly _reward?: TReward;
     private readonly _outgoingEdges: Map<IRewardTreeNode<TReward>, RewardTreeEdge<TReward>>;
     private readonly _metadata?: Record<string, unknown>;
     
-    public constructor(reward: TReward, metadata?: Record<string, unknown>) {
+    public constructor(reward?: TReward, metadata?: Record<string, unknown>) {
         this._reward = reward;
         this._outgoingEdges = new Map();
         this._metadata = metadata;
     }
 
-    public get reward(): TReward {
+    public get reward(): TReward | undefined {
         return this._reward;
     }
 
