@@ -2,6 +2,7 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
     private _counter = 0;
 
     public get counter(): number { return this._counter; }
+    public setCounter(value: number): void { this._counter = value; }
 
     public get targetName(): string { return this._target.name; }
     public get targetId():   string { return this._target.id; }

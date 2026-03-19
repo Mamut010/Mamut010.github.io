@@ -271,6 +271,7 @@ class DynamicRewardTreeFactory {
 }
 class HardPityInterceptor {
     get counter() { return this._counter; }
+    setCounter(value) { this._counter = value; }
     get targetName() { return this._target.name; }
     get targetId() { return this._target.id; }
     constructor(_threshold, _target) {
@@ -297,8 +298,8 @@ class HardPityInterceptor {
     }
     async _forcePity(ctx) {
         const pityConfig = { ...this._target, rate: 100 };
-        const miniTree = await new DynamicRewardTreeFactory([pityConfig]).create(ctx.exec);
-        return ctx.resolver.resolve(miniTree, ctx.exec);
+        const pityTree = await new DynamicRewardTreeFactory([pityConfig]).create(ctx.exec);
+        return ctx.resolver.resolve(pityTree, ctx.exec);
     }
 }
 function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig) {
@@ -323,6 +324,63 @@ function escapeHtml(s) {
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+// ===== Storage =====
+const STORAGE_PREFIX = "REWARDER_";
+function storageKey(suffix) {
+    return STORAGE_PREFIX + suffix;
+}
+function storageLoadProfiles() {
+    try {
+        const raw = localStorage.getItem(storageKey("Profiles"));
+        if (raw)
+            return JSON.parse(raw);
+    }
+    catch (_) { /* ignore */ }
+    return [];
+}
+function storageSaveProfiles(profiles) {
+    try {
+        localStorage.setItem(storageKey("Profiles"), JSON.stringify(profiles));
+    }
+    catch (_) { /* ignore */ }
+}
+function storageLoadActiveProfileId() {
+    try {
+        return localStorage.getItem(storageKey("ActiveProfileId"));
+    }
+    catch (_) { /* ignore */ }
+    return null;
+}
+function storageSaveActiveProfileId(id) {
+    try {
+        localStorage.setItem(storageKey("ActiveProfileId"), id);
+    }
+    catch (_) { /* ignore */ }
+}
+function storageLoadStats(profileId) {
+    try {
+        const raw = localStorage.getItem(storageKey("Stats_" + profileId));
+        if (raw)
+            return JSON.parse(raw);
+    }
+    catch (_) { /* ignore */ }
+    return null;
+}
+function storageSaveStats(profileId, stats) {
+    try {
+        localStorage.setItem(storageKey("Stats_" + profileId), JSON.stringify(stats));
+    }
+    catch (_) { /* ignore */ }
+}
+function storageDeleteStats(profileId) {
+    try {
+        localStorage.removeItem(storageKey("Stats_" + profileId));
+    }
+    catch (_) { /* ignore */ }
+}
+function generateProfileId() {
+    return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+}
 // ===== App =====
 class RewarderApp {
     constructor() {
@@ -337,9 +395,13 @@ class RewarderApp {
         this.pityInterceptor = null;
         this.rng = new MathRandomNumberGenerator();
         this.isRolling = false;
+        this.profiles = [];
+        this.activeProfileId = "";
+        this._initialized = false;
     }
     init() {
-        this.rebuildPipeline();
+        this.loadState();
+        this._initialized = true;
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -358,6 +420,7 @@ class RewarderApp {
         if (this.pityInterceptor) {
             this.pityTargetId = this.pityInterceptor.targetId;
         }
+        this.saveProfileConfig();
     }
     findNode(id, nodes) {
         for (const node of nodes) {
@@ -428,6 +491,16 @@ class RewarderApp {
                 this.renderPityProgress();
             });
         }
+        const profileSel = document.getElementById("profile-select");
+        if (profileSel) {
+            profileSel.addEventListener("change", () => this.switchProfile(profileSel.value));
+        }
+        document.getElementById("btn-new-profile")?.addEventListener("click", () => this.newProfile());
+        document.getElementById("btn-delete-profile")?.addEventListener("click", () => this.deleteProfile(this.activeProfileId));
+        const profileNameInput = document.getElementById("profile-name");
+        if (profileNameInput) {
+            profileNameInput.addEventListener("change", () => this.renameProfile(profileNameInput.value.trim()));
+        }
         this.bindRewardListEvents();
     }
     bindRewardListEvents() {
@@ -452,11 +525,13 @@ class RewarderApp {
             }
             else if (target.classList.contains("reward-color-input")) {
                 node.color = target.value;
+                this.saveProfileConfig();
                 this.renderStats();
                 this.renderHistory();
             }
             else if (target.classList.contains("reward-border-input")) {
                 node.borderColor = target.value;
+                this.saveProfileConfig();
                 this.renderStats();
                 this.renderHistory();
             }
@@ -585,6 +660,7 @@ class RewarderApp {
             this.renderPityProgress();
         }
         this.renderHistory();
+        this.saveCurrentStats();
         this.isRolling = false;
         this.setRollButtonsDisabled(false);
     }
@@ -604,6 +680,180 @@ class RewarderApp {
         this.renderStats();
         this.renderPityProgress();
         this.renderHistory();
+        this.saveCurrentStats();
+    }
+    // ===== Profiles & Persistence =====
+    loadState() {
+        let profiles = storageLoadProfiles();
+        let activeId = storageLoadActiveProfileId();
+        if (profiles.length === 0) {
+            const firstProfile = {
+                id: generateProfileId(),
+                name: "Default",
+                nodes: defaultRewardNodes(),
+                pityEnabled: true,
+                pityThreshold: 90,
+                pityTargetId: null,
+                nextId: 1,
+            };
+            profiles = [firstProfile];
+            storageSaveProfiles(profiles);
+            activeId = firstProfile.id;
+            storageSaveActiveProfileId(activeId);
+        }
+        this.profiles = profiles;
+        const active = profiles.find(p => p.id === activeId) ?? profiles[0];
+        this.activeProfileId = active.id;
+        storageSaveActiveProfileId(this.activeProfileId);
+        this.applyProfile(active);
+        this.rebuildPipeline();
+        const stats = storageLoadStats(active.id);
+        if (stats) {
+            this.applyStats(stats);
+            if (this.pityInterceptor)
+                this.pityInterceptor.setCounter(stats.pityCounter);
+        }
+    }
+    applyProfile(profile) {
+        this.rewardNodes = profile.nodes;
+        this.pityEnabled = profile.pityEnabled;
+        this.pityThreshold = profile.pityThreshold;
+        this.pityTargetId = profile.pityTargetId;
+        this.nextId = profile.nextId;
+    }
+    applyStats(stats) {
+        this.totalRolls = stats.totalRolls;
+        this.rewardCounts = new Map(Object.entries(stats.rewardCounts));
+        this.history = stats.history.map(h => ({
+            rollNum: h.rollNum,
+            reward: new Reward(h.rewardId, h.rewardName),
+        }));
+    }
+    saveProfileConfig() {
+        const idx = this.profiles.findIndex(p => p.id === this.activeProfileId);
+        if (idx === -1)
+            return;
+        this.profiles[idx] = {
+            ...this.profiles[idx],
+            nodes: this.rewardNodes,
+            pityEnabled: this.pityEnabled,
+            pityThreshold: this.pityThreshold,
+            pityTargetId: this.pityTargetId,
+            nextId: this.nextId,
+        };
+        storageSaveProfiles(this.profiles);
+    }
+    saveCurrentStats() {
+        const stats = {
+            totalRolls: this.totalRolls,
+            rewardCounts: Object.fromEntries(this.rewardCounts),
+            history: this.history.map(h => ({
+                rollNum: h.rollNum,
+                rewardId: h.reward.id,
+                rewardName: h.reward.name,
+            })),
+            pityCounter: this.pityInterceptor?.counter ?? 0,
+        };
+        storageSaveStats(this.activeProfileId, stats);
+    }
+    switchProfile(id) {
+        if (id === this.activeProfileId)
+            return;
+        const profile = this.profiles.find(p => p.id === id);
+        if (!profile)
+            return;
+        this.saveCurrentStats();
+        this.activeProfileId = id;
+        storageSaveActiveProfileId(id);
+        this.totalRolls = 0;
+        this.rewardCounts = new Map();
+        this.history = [];
+        this.applyProfile(profile);
+        this.rebuildPipeline();
+        const stats = storageLoadStats(id);
+        if (stats) {
+            this.applyStats(stats);
+            if (this.pityInterceptor)
+                this.pityInterceptor.setCounter(stats.pityCounter);
+        }
+        this.renderAll();
+    }
+    newProfile() {
+        this.saveCurrentStats();
+        const num = this.profiles.length + 1;
+        const profile = {
+            id: generateProfileId(),
+            name: "Profile " + num,
+            nodes: defaultRewardNodes(),
+            pityEnabled: true,
+            pityThreshold: 90,
+            pityTargetId: null,
+            nextId: 1,
+        };
+        this.profiles.push(profile);
+        storageSaveProfiles(this.profiles);
+        this.activeProfileId = profile.id;
+        storageSaveActiveProfileId(profile.id);
+        this.totalRolls = 0;
+        this.rewardCounts = new Map();
+        this.history = [];
+        this.applyProfile(profile);
+        this.rebuildPipeline();
+        this.renderAll();
+    }
+    deleteProfile(id) {
+        if (this.profiles.length <= 1)
+            return;
+        const idx = this.profiles.findIndex(p => p.id === id);
+        if (idx === -1)
+            return;
+        storageDeleteStats(id);
+        this.profiles.splice(idx, 1);
+        storageSaveProfiles(this.profiles);
+        if (this.activeProfileId === id) {
+            const next = this.profiles[Math.max(0, idx - 1)];
+            this.activeProfileId = next.id;
+            storageSaveActiveProfileId(next.id);
+            this.totalRolls = 0;
+            this.rewardCounts = new Map();
+            this.history = [];
+            this.applyProfile(next);
+            this.rebuildPipeline();
+            const stats = storageLoadStats(next.id);
+            if (stats) {
+                this.applyStats(stats);
+                if (this.pityInterceptor)
+                    this.pityInterceptor.setCounter(stats.pityCounter);
+            }
+            this.renderAll();
+        }
+        else {
+            this.renderProfilePicker();
+        }
+    }
+    renameProfile(name) {
+        const idx = this.profiles.findIndex(p => p.id === this.activeProfileId);
+        if (idx === -1)
+            return;
+        this.profiles[idx].name = name || "Profile";
+        storageSaveProfiles(this.profiles);
+        this.renderProfilePicker();
+    }
+    renderProfilePicker() {
+        const sel = document.getElementById("profile-select");
+        if (sel) {
+            sel.innerHTML = this.profiles
+                .map(p => `<option value="${p.id}"${p.id === this.activeProfileId ? " selected" : ""}>${escapeHtml(p.name)}</option>`)
+                .join("");
+        }
+        const nameInput = document.getElementById("profile-name");
+        if (nameInput) {
+            const active = this.profiles.find(p => p.id === this.activeProfileId);
+            nameInput.value = active?.name ?? "";
+        }
+        const delBtn = document.getElementById("btn-delete-profile");
+        if (delBtn)
+            delBtn.disabled = this.profiles.length <= 1;
     }
     // ===== Renders =====
     renderAll() {
@@ -614,6 +864,7 @@ class RewarderApp {
         const trow = document.getElementById("pity-target-row");
         if (trow)
             trow.style.display = pityDisplay;
+        this.renderProfilePicker();
         this.renderRewardEditor();
         this.updateRateSummary();
         this.renderLatestResult(null, 0);
