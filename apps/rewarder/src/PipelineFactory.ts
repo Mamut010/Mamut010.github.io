@@ -1,9 +1,9 @@
 function buildPipeline(
-    items: readonly RewardItemConfig[],
+    nodes: readonly RewardNodeConfig[],
     pityEnabled: boolean,
     pityThreshold: number,
 ): { pipeline: RewardPipeline<Reward>; pityInterceptor: HardPityInterceptor | null } {
-    const treeFactory = new DynamicRewardTreeFactory(items);
+    const treeFactory = new DynamicRewardTreeFactory(nodes);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
     const collector   = new SubtreeRewardCollector<Reward>();
     const resolver    = new RewardResolver<Reward>(walker, collector);

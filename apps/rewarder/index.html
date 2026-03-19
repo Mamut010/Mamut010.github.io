@@ -24,13 +24,16 @@
                     <section class="config-section">
                         <div class="rewards-editor-header">
                             <h2 class="section-title" style="margin-bottom:0">Rewards</h2>
-                            <button id="btn-add-reward" class="btn-add-reward">+ Add</button>
+                            <div class="add-node-buttons">
+                                <button id="btn-add-leaf" class="btn-add-node">+ Leaf</button>
+                                <button id="btn-add-group" class="btn-add-node">+ Group</button>
+                            </div>
                         </div>
                         <div id="reward-list">
                             <!-- populated by JS -->
                         </div>
                         <div class="rate-summary">
-                            Total: <span id="total-rate">100.00</span>%
+                            Overall: <span id="total-rate">100.00</span>%
                             <span class="rate-warning-inline" id="rate-warning" style="display:none">⚠ must sum to 100</span>
                         </div>
                     </section>

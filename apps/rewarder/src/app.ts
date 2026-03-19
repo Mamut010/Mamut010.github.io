@@ -6,10 +6,10 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private rewardItems: RewardItemConfig[] = defaultRewardItems();
+    private rewardNodes: RewardNodeConfig[] = defaultRewardNodes();
     private pityEnabled   = true;
     private pityThreshold = 90;
-    private nextItemId    = 1;
+    private nextId        = 1;
 
     private totalRolls   = 0;
     private rewardCounts = new Map<string, number>();
@@ -28,7 +28,7 @@ class RewarderApp {
 
     private rebuildPipeline(): void {
         const { pipeline, pityInterceptor } = buildPipeline(
-            this.rewardItems,
+            this.rewardNodes,
             this.pityEnabled,
             this.pityThreshold,
         );
@@ -36,16 +36,52 @@ class RewarderApp {
         this.pityInterceptor = pityInterceptor;
     }
 
-    private configById(id: string): RewardItemConfig | undefined {
-        return this.rewardItems.find(item => item.id === id);
+    private findNode(id: string, nodes: RewardNodeConfig[]): RewardNodeConfig | undefined {
+        for (const node of nodes) {
+            if (node.id === id) return node;
+            if (node.isGroup) {
+                const found = this.findNode(id, node.children);
+                if (found) return found;
+            }
+        }
+        return undefined;
     }
 
-    private totalRate(): number {
-        return this.rewardItems.reduce((sum, item) => sum + item.rate, 0);
+    private validateTree(nodes: RewardNodeConfig[]): boolean {
+        if (nodes.length === 0) return false;
+        const sum = nodes.reduce((s, n) => s + n.rate, 0);
+        if (Math.abs(sum - 100) >= 0.001) return false;
+        for (const n of nodes) {
+            if (n.isGroup && !this.validateTree(n.children)) return false;
+        }
+        return true;
     }
 
     private isRateValid(): boolean {
-        return this.rewardItems.length > 0 && Math.abs(this.totalRate() - 100) < 0.001;
+        return this.validateTree(this.rewardNodes);
+    }
+
+    private rootTotalRate(): number {
+        return this.rewardNodes.reduce((s, n) => s + n.rate, 0);
+    }
+
+    private findLeastProbableLeaf(
+        nodes: readonly RewardNodeConfig[],
+        parentProb: number,
+    ): { config: RewardNodeConfig; prob: number } | null {
+        const total = nodes.reduce((s, n) => s + n.rate, 0);
+        if (total === 0) return null;
+        let best: { config: RewardNodeConfig; prob: number } | null = null;
+        for (const node of nodes) {
+            const prob = parentProb * (node.rate / total);
+            if (node.isGroup) {
+                const child = this.findLeastProbableLeaf(node.children, prob);
+                if (child && (!best || child.prob < best.prob)) best = child;
+            } else {
+                if (!best || prob < best.prob) best = { config: node, prob };
+            }
+        }
+        return best;
     }
 
     // ===== Events =====
@@ -73,7 +109,8 @@ class RewarderApp {
         document.getElementById("btn-roll-10")!.addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100")!.addEventListener("click",() => this.doRolls(100));
         document.getElementById("btn-reset")!.addEventListener("click",   () => this.resetStats());
-        document.getElementById("btn-add-reward")!.addEventListener("click", () => this.addRewardItem());
+        document.getElementById("btn-add-leaf")!.addEventListener("click",  () => this.addRootLeaf());
+        document.getElementById("btn-add-group")!.addEventListener("click", () => this.addRootGroup());
 
         this.bindRewardListEvents();
     }
@@ -84,21 +121,21 @@ class RewarderApp {
 
         list.addEventListener("input", (e) => {
             const target = e.target as HTMLElement;
-            const row = target.closest<HTMLElement>(".reward-config-row");
-            if (!row) return;
-            const item = this.configById(row.dataset.id!);
-            if (!item) return;
+            const treeNode = target.closest<HTMLElement>(".tree-node");
+            if (!treeNode) return;
+            const node = this.findNode(treeNode.dataset.id!, this.rewardNodes);
+            if (!node) return;
 
             if (target.classList.contains("reward-rate-input")) {
-                item.rate = parseFloat((target as HTMLInputElement).value) || 0;
+                node.rate = parseFloat((target as HTMLInputElement).value) || 0;
                 this.updateRateSummary();
                 this.rebuildPipeline();
             } else if (target.classList.contains("reward-color-input")) {
-                item.color = (target as HTMLInputElement).value;
+                node.color = (target as HTMLInputElement).value;
                 this.renderStats();
                 this.renderHistory();
             } else if (target.classList.contains("reward-border-input")) {
-                item.borderColor = (target as HTMLInputElement).value;
+                node.borderColor = (target as HTMLInputElement).value;
                 this.renderStats();
                 this.renderHistory();
             }
@@ -106,42 +143,96 @@ class RewarderApp {
 
         list.addEventListener("change", (e) => {
             const target = e.target as HTMLElement;
-            const row = target.closest<HTMLElement>(".reward-config-row");
-            if (!row) return;
-            const item = this.configById(row.dataset.id!);
-            if (!item) return;
+            const treeNode = target.closest<HTMLElement>(".tree-node");
+            if (!treeNode) return;
+            const node = this.findNode(treeNode.dataset.id!, this.rewardNodes);
+            if (!node) return;
 
             if (target.classList.contains("reward-name-input")) {
-                item.name = (target as HTMLInputElement).value.trim() || "Reward";
+                node.name = (target as HTMLInputElement).value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.rebuildPipeline();
             }
         });
 
         list.addEventListener("click", (e) => {
-            const btn = (e.target as HTMLElement).closest<HTMLElement>(".btn-delete-reward");
-            if (!btn) return;
-            const row = btn.closest<HTMLElement>(".reward-config-row");
-            if (!row) return;
-            this.removeRewardItem(row.dataset.id!);
+            const target = e.target as HTMLElement;
+            if (target.closest(".btn-delete-reward")) {
+                const treeNode = target.closest<HTMLElement>(".tree-node");
+                if (treeNode) this.removeNode(treeNode.dataset.id!);
+            } else if (target.closest(".btn-add-child")) {
+                const treeNode = target.closest<HTMLElement>(".tree-node.tree-group");
+                if (treeNode) this.addChildToGroup(treeNode.dataset.id!);
+            }
         });
     }
 
-    private addRewardItem(): void {
-        const id = `item-${this.nextItemId++}`;
-        this.rewardItems.push({ id, name: "New Reward", rate: 0, color: "#c084fc", borderColor: "#c084fc" });
+    private addRootLeaf(): void {
+        const id = `leaf-${this.nextId++}`;
+        this.rewardNodes.push({
+            id, name: "New Reward", rate: 0, isGroup: false,
+            color: "#c084fc", borderColor: "#c084fc", children: [],
+        });
+        this.afterEdit(id);
+    }
+
+    private addRootGroup(): void {
+        const gid = `group-${this.nextId++}`;
+        const lid = `leaf-${this.nextId++}`;
+        this.rewardNodes.push({
+            id: gid, name: "New Group", rate: 0, isGroup: true,
+            color: "", borderColor: "",
+            children: [{
+                id: lid, name: "New Reward", rate: 100, isGroup: false,
+                color: "#c084fc", borderColor: "#c084fc", children: [],
+            }],
+        });
+        this.afterEdit(gid);
+    }
+
+    private addChildToGroup(groupId: string): void {
+        const group = this.findNode(groupId, this.rewardNodes);
+        if (!group || !group.isGroup) return;
+        const id = `leaf-${this.nextId++}`;
+        group.children.push({
+            id, name: "New Reward", rate: 0, isGroup: false,
+            color: "#c084fc", borderColor: "#c084fc", children: [],
+        });
+        this.afterEdit(id);
+    }
+
+    private afterEdit(focusId: string): void {
         this.rebuildPipeline();
         this.renderRewardEditor();
         this.updateRateSummary();
-        const input = document.querySelector<HTMLInputElement>(`.reward-config-row[data-id="${id}"] .reward-name-input`);
+        const input = document.querySelector<HTMLInputElement>(`.tree-node[data-id="${focusId}"] .reward-name-input`);
         input?.focus();
         input?.select();
     }
 
-    private removeRewardItem(id: string): void {
-        this.rewardItems = this.rewardItems.filter(item => item.id !== id);
-        this.rebuildPipeline();
-        this.renderRewardEditor();
-        this.updateRateSummary();
+    private removeNode(id: string): void {
+        if (this.rewardNodes.length > 1) {
+            const idx = this.rewardNodes.findIndex(n => n.id === id);
+            if (idx !== -1) {
+                this.rewardNodes.splice(idx, 1);
+                this.rebuildPipeline();
+                this.renderRewardEditor();
+                this.updateRateSummary();
+                return;
+            }
+        }
+        for (const group of this.rewardNodes) {
+            if (!group.isGroup) continue;
+            if (group.children.length > 1) {
+                const idx = group.children.findIndex(n => n.id === id);
+                if (idx !== -1) {
+                    group.children.splice(idx, 1);
+                    this.rebuildPipeline();
+                    this.renderRewardEditor();
+                    this.updateRateSummary();
+                    return;
+                }
+            }
+        }
     }
 
     // ===== Rolls =====
@@ -218,32 +309,77 @@ class RewarderApp {
     private renderRewardEditor(): void {
         const list = document.getElementById("reward-list");
         if (!list) return;
+        list.innerHTML = this.rewardNodes.map(node => this.renderRootNode(node)).join("");
+    }
 
-        const canDelete = this.rewardItems.length > 1;
-        list.innerHTML = this.rewardItems.map(item => `
-            <div class="reward-config-row" data-id="${item.id}">
-                <div class="color-swatches">
-                    <input type="color" class="color-swatch reward-color-input" value="${item.color}" title="Text color">
-                    <input type="color" class="color-swatch reward-border-input" value="${item.borderColor}" title="Border color">
+    private renderRootNode(node: RewardNodeConfig): string {
+        const canDelete = this.rewardNodes.length > 1;
+        return node.isGroup
+            ? this.renderGroupNode(node, canDelete)
+            : this.renderLeafNode(node, null, canDelete);
+    }
+
+    private renderGroupNode(group: RewardNodeConfig, canDelete: boolean): string {
+        const childrenHtml = group.children
+            .map(child => this.renderLeafNode(child, group.id, group.children.length > 1))
+            .join("");
+        const childSum = group.children.reduce((s, c) => s + c.rate, 0);
+        const childOk  = group.children.length > 0 && Math.abs(childSum - 100) < 0.001;
+        return `
+            <div class="tree-node tree-group" data-id="${group.id}">
+                <div class="reward-config-row group-row">
+                    <span class="group-icon">&#x229e;</span>
+                    <input type="text" class="reward-name-input" value="${escapeHtml(group.name)}" placeholder="Group name">
+                    <div class="reward-rate-group">
+                        <input type="number" class="reward-rate-input" value="${group.rate}" min="0" max="100" step="0.01">
+                        <span class="rate-unit">%</span>
+                    </div>
+                    <button class="btn-add-child" title="Add reward to group">+</button>
+                    <button class="btn-delete-reward" title="Remove group"${canDelete ? "" : " disabled"}>&#xd7;</button>
                 </div>
-                <input type="text" class="reward-name-input" value="${escapeHtml(item.name)}" placeholder="Name">
-                <div class="reward-rate-group">
-                    <input type="number" class="reward-rate-input" value="${item.rate}" min="0" max="100" step="0.01">
-                    <span class="rate-unit">%</span>
+                <div class="group-children">
+                    ${childrenHtml}
+                    <div class="group-rate-summary ${childOk ? "rate-ok" : "rate-warn"}">\u03a3 ${childSum.toFixed(2)}% ${childOk ? "\u2713" : "\u26a0"}</div>
                 </div>
-                <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>\u00d7</button>
-            </div>
-        `).join("");
+            </div>`;
+    }
+
+    private renderLeafNode(leaf: RewardNodeConfig, parentId: string | null, canDelete: boolean): string {
+        return `
+            <div class="tree-node tree-leaf" data-id="${leaf.id}"${parentId ? ` data-parent="${parentId}"` : ""}>
+                <div class="reward-config-row leaf-row">
+                    <div class="color-swatches">
+                        <input type="color" class="color-swatch reward-color-input" value="${leaf.color}" title="Text color">
+                        <input type="color" class="color-swatch reward-border-input" value="${leaf.borderColor}" title="Border color">
+                    </div>
+                    <input type="text" class="reward-name-input" value="${escapeHtml(leaf.name)}" placeholder="Name">
+                    <div class="reward-rate-group">
+                        <input type="number" class="reward-rate-input" value="${leaf.rate}" min="0" max="100" step="0.01">
+                        <span class="rate-unit">%</span>
+                    </div>
+                    <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>&#xd7;</button>
+                </div>
+            </div>`;
     }
 
     private updateRateSummary(): void {
-        const total = this.totalRate();
+        const rootTotal = this.rootTotalRate();
         const totalEl = document.getElementById("total-rate");
-        if (totalEl) totalEl.textContent = total.toFixed(2);
+        if (totalEl) totalEl.textContent = rootTotal.toFixed(2);
 
         const valid = this.isRateValid();
         const warning = document.getElementById("rate-warning");
         if (warning) warning.style.display = valid ? "none" : "inline";
+
+        for (const group of this.rewardNodes) {
+            if (!group.isGroup) continue;
+            const sumEl = document.querySelector<HTMLElement>(`.tree-node[data-id="${group.id}"] .group-rate-summary`);
+            if (!sumEl) continue;
+            const childSum = group.children.reduce((s, c) => s + c.rate, 0);
+            const ok = group.children.length > 0 && Math.abs(childSum - 100) < 0.001;
+            sumEl.textContent = `\u03a3 ${childSum.toFixed(2)}% ${ok ? "\u2713" : "\u26a0"}`;
+            sumEl.className = `group-rate-summary ${ok ? "rate-ok" : "rate-warn"}`;
+        }
 
         this.setRollButtonsDisabled(!valid || this.isRolling);
     }
@@ -257,7 +393,7 @@ class RewarderApp {
             return;
         }
 
-        const cfg         = this.configById(reward.id);
+        const cfg         = this.findNode(reward.id, this.rewardNodes);
         const color       = cfg?.color       ?? "#eee";
         const borderColor = cfg?.borderColor ?? "#444";
 
@@ -283,14 +419,14 @@ class RewarderApp {
         const container = document.getElementById("stats-rows");
         if (!container) return;
 
-        container.innerHTML = this.rewardItems.map(item => {
-            const count = this.rewardCounts.get(item.id) ?? 0;
+        container.innerHTML = collectLeaves(this.rewardNodes).map(leaf => {
+            const count = this.rewardCounts.get(leaf.id) ?? 0;
             const pct   = total > 0 ? (count / total) * 100 : 0;
             return `
                 <div class="stat-row">
-                    <div class="stat-label" style="color:${item.color}">${escapeHtml(item.name)}</div>
+                    <div class="stat-label" style="color:${leaf.color}">${escapeHtml(leaf.name)}</div>
                     <div class="stat-bar-track">
-                        <div class="stat-bar" style="width:${pct}%;background-color:${item.borderColor}"></div>
+                        <div class="stat-bar" style="width:${pct}%;background-color:${leaf.borderColor}"></div>
                     </div>
                     <div class="stat-values">
                         <span class="stat-count">${count}</span>
@@ -316,9 +452,7 @@ class RewarderApp {
         const pct     = Math.min(100, (counter / threshold) * 100);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
 
-        const targetName = [...this.rewardItems]
-            .filter(i => i.rate > 0)
-            .sort((a, b) => a.rate - b.rate)[0]?.name ?? "rarest reward";
+        const targetName = this.findLeastProbableLeaf(this.rewardNodes, 1)?.config.name ?? "rarest reward";
 
         const countEl     = document.getElementById("pity-count");
         const thresholdEl = document.getElementById("pity-threshold-display");
@@ -344,7 +478,7 @@ class RewarderApp {
         }
 
         container.innerHTML = this.history.slice(0, 60).map(entry => {
-            const cfg         = this.configById(entry.reward.id);
+            const cfg         = this.findNode(entry.reward.id, this.rewardNodes);
             const color       = cfg?.color       ?? "#eee";
             const borderColor = cfg?.borderColor ?? "#555";
             return `

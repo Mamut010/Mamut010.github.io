@@ -9,10 +9,9 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
         ctx: RewardPipelineContext<Reward>,
         next: RewardNextHandler<Reward>,
     ): Promise<RewardResult<Reward>> {
-        const edges = ctx.tree.root.outgoingEdges;
-        if (edges.length === 0) return next(ctx);
+        const leastReward = this.getLeastProbableLeaf(ctx.tree.root);
+        if (leastReward.equals(Reward.Empty)) return next(ctx);
 
-        const leastReward = this.getLeastWeightedReward(edges);
         const result = await next(ctx);
 
         if (result.rewards.some(r => r.equals(leastReward))) {
@@ -27,9 +26,27 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
         return { rewards: [leastReward], path: result.path };
     }
 
-    public getLeastWeightedReward(edges: readonly IRewardTreeEdge<Reward>[]): Reward {
-        const valid = edges.filter(e => e.weight > 0 && e.target.reward != null);
-        if (valid.length === 0) return Reward.Empty;
-        return valid.reduce((min, e) => e.weight < min.weight ? e : min).target.reward!;
+    public getLeastProbableLeaf(root: IRewardTreeNode<Reward>): Reward {
+        const result = this.findMinProbLeaf(root, 1);
+        return result?.reward ?? Reward.Empty;
+    }
+
+    private findMinProbLeaf(
+        node: IRewardTreeNode<Reward>,
+        prob: number,
+    ): { reward: Reward; prob: number } | null {
+        const edges = node.outgoingEdges.filter(e => e.weight > 0);
+        if (edges.length === 0) {
+            const r = node.reward;
+            if (r != null && !r.equals(Reward.Empty)) return { reward: r, prob };
+            return null;
+        }
+        const totalWeight = edges.reduce((s, e) => s + e.weight, 0);
+        let best: { reward: Reward; prob: number } | null = null;
+        for (const edge of edges) {
+            const child = this.findMinProbLeaf(edge.target, prob * (edge.weight / totalWeight));
+            if (child && (!best || child.prob < best.prob)) best = child;
+        }
+        return best;
     }
 }
