@@ -178,7 +178,6 @@ class RewardPipeline {
         };
     }
 }
-// ===== Reward Item Config =====
 function defaultRewardItems() {
     return [
         { id: "sr", name: "Super Rare Reward", rate: 1, color: "#f0a830", borderColor: "#f0a830" },
@@ -186,7 +185,6 @@ function defaultRewardItems() {
         { id: "common", name: "Common Reward", rate: 84, color: "#8b96a5", borderColor: "#444f5a" },
     ];
 }
-// ===== Reward Domain =====
 class Reward {
     constructor(id, name) {
         this.id = id;
@@ -242,7 +240,6 @@ class HardPityInterceptor {
         return valid.reduce((min, e) => e.weight < min.weight ? e : min).target.reward;
     }
 }
-// ===== Pipeline Factory =====
 function buildPipeline(items, pityEnabled, pityThreshold) {
     const treeFactory = new DynamicRewardTreeFactory(items);
     const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
@@ -256,6 +253,13 @@ function buildPipeline(items, pityEnabled, pityThreshold) {
     }
     return { pipeline, pityInterceptor };
 }
+function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+// ===== App =====
 class RewarderApp {
     constructor() {
         this.rewardItems = defaultRewardItems();
@@ -573,12 +577,6 @@ class RewarderApp {
             `;
         }).join("");
     }
-}
-function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 document.addEventListener("DOMContentLoaded", () => {
     new RewarderApp().init();
