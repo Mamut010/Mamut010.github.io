@@ -1,0 +1,100 @@
+body {
+    font-family: "clear sans", "helvetica neue", Arial, sans-serif;
+    background: #1a1a2e;
+    min-height: 100vh;
+    color: #eee;
+}
+
+@keyframes glow-title {
+    from {
+        text-shadow: 0 0 1px #fff, 0 0 2px #fff, 0 0 3px #e60073, 0 0 4px #e60073;
+    }
+    to {
+        text-shadow: 0 0 2px #fff, 0 0 4px #fff, 0 0 6px #e60073, 0 0 8px #e60073;
+    }
+}
+
+.hub-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 3em 1.5em 4em;
+    text-align: center;
+}
+
+.hub-title {
+    font-family: 'Brush Script MT', cursive;
+    font-size: 4em;
+    color: #c084fc;
+    margin-bottom: 0.2em;
+    animation: glow-title 1s ease-in-out infinite alternate;
+}
+
+.hub-subtitle {
+    font-size: 1em;
+    color: #888;
+    margin-bottom: 2.5em;
+}
+
+.app-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.5em;
+}
+
+.app-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 180px;
+    padding: 1.8em 1em 1.4em;
+    background: #16213e;
+    border: 2px solid #2a2a5a;
+    border-radius: 16px;
+    text-decoration: none;
+    color: #eee;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.app-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 0 24px rgba(192, 132, 252, 0.45);
+    border-color: #c084fc;
+}
+
+.app-card-visual {
+    font-family: 'Brush Script MT', cursive;
+    font-size: 2.8em;
+    color: #8000ff;
+    text-shadow: 0 0 10px rgba(128, 0, 255, 0.4);
+    margin-bottom: 0.5em;
+}
+
+.app-card-name {
+    font-size: 1.05em;
+    font-weight: bold;
+    margin-bottom: 0.3em;
+}
+
+.app-card-desc {
+    font-size: 0.78em;
+    color: #999;
+    text-align: center;
+    line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+    .hub-title {
+        font-size: 3em;
+    }
+
+    .app-card {
+        width: 145px;
+        padding: 1.4em 0.8em 1.1em;
+    }
+
+    .app-card-visual {
+        font-size: 2.3em;
+    }
+}

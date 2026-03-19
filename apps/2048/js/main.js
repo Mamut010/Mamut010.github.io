@@ -44,14 +44,14 @@ const mergedPoints = new Set();
 let spawnedPoint;
 
 const createBgm = (sources) => new AudioPlayer()
-    .setSources((sources ?? []).map(src => `audio\\background\\${src}`))
+    .setSources((sources ?? []).map(src => `audio/background/${src}`))
     .setShuffle(true)
     .setVolume(0.5)
     .setMuted(true)
     .setLooping(true);
 
 const createSfx = (sources) => new AudioPlayer()
-    .setSources((sources ?? []).map(src => `audio\\sfx\\${src}`))
+    .setSources((sources ?? []).map(src => `audio/sfx/${src}`))
     .setVolume(0.5)
     .setShuffle(true);
 

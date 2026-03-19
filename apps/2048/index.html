@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>2048</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="shortcut icon" href="../../favicon.ico" type="image/x-icon">
+        <link rel="icon" href="../../favicon.ico" type="image/x-icon">
+        <link rel="stylesheet" href="../../css/reset.css">
+        <link rel="stylesheet" href="./css/styles.css">
+        <script defer src="./js/swipe-listener.min.js"></script>
+        <script defer src="./js/utils.js"></script>
+        <script defer src="./js/2048.js"></script>
+        <script defer src="./js/dom-recycler.js"></script>
+        <script defer src="./js/audio-player.js"></script>
+        <script defer src="./js/audio-sources.js"></script>
+        <script defer src="./js/cell-manager.js"></script>
+        <script defer src="./js/main.js"></script>
+    </head>
+    <body>
+        <div id="initial-pop-up">
+            <div class="message" id="initial-pop-up-message">
+                <noscript>Sorry! Please turn on Javascript support to play the game.</noscript>
+            </div>
+        </div>
+
+        <a class="back-button" href="../../" aria-label="Back to App Center">&#8592; App Center</a>
+
+        <div class="page-container">
+            <h1 class="glow-title" id="game-title">2048</h1>
+            <div class="direction-buttons-container">
+                <em id="direction-buttons-usage-prompt">
+                    Use the direction buttons or arrow keys on your keyboard to play
+                </em>
+                <div class="direction-buttons-grid">
+                    <div></div>
+                    <div><button type="button" class="direction-button" onclick="moveUp()">↑</button></div>
+                    <div></div>
+                    <div><button type="button" class="direction-button" onclick="moveLeft()">←</button></div>
+                    <div><button type="button" class="direction-button" onclick="moveDown()">↓</button></div>
+                    <div><button type="button" class="direction-button" onclick="moveRight()">→</button></div>
+                </div>
+            </div>
+            <em id="swipe-usage-prompt">Swipe to play</em>
+
+            <p class="score-container">
+                SCORE: <span id="score">0</span>
+            </p>
+
+            <div id="game-board">
+                <div class="game-over-modal-overlay" id="game-over-modal-overlay"></div>
+                <div class="game-over-modal-box" id="game-over-modal-box">
+                    <span>GAME OVER</span>
+                </div>
+            </div>
+
+            <div id="support-direction-buttons">
+                <div class="direction-buttons-grid">
+                    <div></div>
+                    <div><button type="button" class="direction-button" onclick="moveUp()">↑</button></div>
+                    <div></div>
+                    <div><button type="button" class="direction-button" onclick="moveLeft()">←</button></div>
+                    <div><button type="button" class="direction-button" onclick="moveDown()">↓</button></div>
+                    <div><button type="button" class="direction-button" onclick="moveRight()">→</button></div>
+                </div>
+            </div>
+
+            <div class="control-buttons-container">
+                <button class="control-button reset-button" id="reset-button" type="button">RESET</button>
+                <button class="control-button toggle-directions-button" id="toggle-direction-button" type="button">
+                    TOGGLE DIRECTIONS
+                </button>
+                <button class="control-button next-bgm-button" id="next-bgm-button">NEXT BGM</button>
+            </div>
+
+            <div class="sound-control-container">
+                <button class="sound-icon-button" id="mute-button" type="button" aria-label="Mute/Unmute">
+                    🔊
+                </button>
+                <div class="volume-slider-wrapper">
+                    <input 
+                        type="range" 
+                        class="volume-slider" 
+                        id="volume-slider" 
+                        min="0" 
+                        max="100" 
+                        value="50"
+                        aria-label="Volume control slider"
+                    />
+                    <div class="volume-tooltip" id="volume-tooltip">50%</div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
