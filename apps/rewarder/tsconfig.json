@@ -1,0 +1,38 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "none",
+        "lib": ["ES2020", "DOM"],
+        "outFile": "./js/rewarder.js",
+        "strict": true,
+        "skipLibCheck": true
+    },
+    "files": [
+        "src/contracts/IRandomNumberGenerator.ts",
+        "src/contracts/IRewardTreeEdge.ts",
+        "src/contracts/IRewardTreeNode.ts",
+        "src/contracts/IRewardTree.ts",
+        "src/contracts/IEdgeProvider.ts",
+        "src/contracts/IRewardCollector.ts",
+        "src/contracts/IRewardInterceptor.ts",
+        "src/contracts/IRewardResolver.ts",
+        "src/contracts/IRewardPipeline.ts",
+        "src/contracts/IRewardTreeWalker.ts",
+        "src/contracts/IRewardTreeFactory.ts",
+        "src/contracts/RewardExecutionContext.ts",
+        "src/contracts/RewardNextHandler.ts",
+        "src/contracts/RewardPipelineContext.ts",
+        "src/contracts/RewardResult.ts",
+        "./src/utils/Collections.ts",
+        "src/impl/MathRandomNumberGenerator.ts",
+        "src/core/RewardTreeEdge.ts",
+        "src/core/RewardTreeNode.ts",
+        "src/core/RewardTree.ts",
+        "src/impl/BaseEdgeProvider.ts",
+        "src/impl/WeightedUntilLeafTreeWalker.ts",
+        "src/impl/SubtreeRewardCollector.ts",
+        "src/core/RewardResolver.ts",
+        "src/core/RewardPipeline.ts",
+        "./src/app.ts"
+    ]
+}
