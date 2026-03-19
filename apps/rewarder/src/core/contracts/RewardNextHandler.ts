@@ -1,0 +1,1 @@
+type RewardNextHandler<TReward> = (ctx: RewardPipelineContext<TReward>) => Promise<RewardResult<TReward>>;
