@@ -33,6 +33,11 @@
         "src/impl/SubtreeRewardCollector.ts",
         "src/core/RewardResolver.ts",
         "src/core/RewardPipeline.ts",
+        "src/RewardItemConfig.ts",
+        "src/Reward.ts",
+        "src/HardPityInterceptor.ts",
+        "src/PipelineFactory.ts",
+        "src/utils/DomUtils.ts",
         "./src/app.ts"
     ]
 }
