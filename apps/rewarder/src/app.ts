@@ -7,9 +7,10 @@ interface RollRecord {
 
 class RewarderApp {
     private rewardNodes: RewardNodeConfig[] = defaultRewardNodes();
-    private pityEnabled   = true;
-    private pityThreshold = 90;
-    private nextId        = 1;
+    private pityEnabled    = true;
+    private pityThreshold  = 90;
+    private pityTargetId: string | null = null;
+    private nextId         = 1;
 
     private totalRolls   = 0;
     private rewardCounts = new Map<string, number>();
@@ -27,13 +28,25 @@ class RewarderApp {
     }
 
     private rebuildPipeline(): void {
+        // Invalidate stale target id
+        if (this.pityTargetId !== null && !this.findNode(this.pityTargetId, this.rewardNodes)) {
+            this.pityTargetId = null;
+        }
+        const targetConfig = this.pityTargetId
+            ? (this.findNode(this.pityTargetId, this.rewardNodes) ?? null)
+            : null;
         const { pipeline, pityInterceptor } = buildPipeline(
             this.rewardNodes,
             this.pityEnabled,
             this.pityThreshold,
+            targetConfig,
         );
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
+        // Sync pityTargetId to whatever was actually chosen (handles first run auto-pick)
+        if (this.pityInterceptor) {
+            this.pityTargetId = this.pityInterceptor.targetId;
+        }
     }
 
     private findNode(id: string, nodes: RewardNodeConfig[]): RewardNodeConfig | undefined {
@@ -65,24 +78,6 @@ class RewarderApp {
         return this.rewardNodes.reduce((s, n) => s + n.rate, 0);
     }
 
-    private findLeastProbableLeaf(
-        nodes: readonly RewardNodeConfig[],
-        parentProb: number,
-    ): { config: RewardNodeConfig; prob: number } | null {
-        const total = nodes.reduce((s, n) => s + n.rate, 0);
-        if (total === 0) return null;
-        let best: { config: RewardNodeConfig; prob: number } | null = null;
-        for (const node of nodes) {
-            const prob = parentProb * (node.rate / total);
-            if (node.isGroup) {
-                const child = this.findLeastProbableLeaf(node.children, prob);
-                if (child && (!best || child.prob < best.prob)) best = child;
-            } else {
-                if (!best || prob < best.prob) best = { config: node, prob };
-            }
-        }
-        return best;
-    }
 
     // ===== Events =====
 
@@ -92,8 +87,11 @@ class RewarderApp {
 
         pityToggle.addEventListener("change", () => {
             this.pityEnabled = pityToggle.checked;
+            const pityDisplay = this.pityEnabled ? "flex" : "none";
             const row = document.getElementById("pity-config-row");
-            if (row) row.style.display = this.pityEnabled ? "flex" : "none";
+            if (row) row.style.display = pityDisplay;
+            const trow = document.getElementById("pity-target-row");
+            if (trow) trow.style.display = pityDisplay;
             this.rebuildPipeline();
             this.renderPityProgress();
         });
@@ -111,6 +109,16 @@ class RewarderApp {
         document.getElementById("btn-reset")!.addEventListener("click",   () => this.resetStats());
         document.getElementById("btn-add-leaf")!.addEventListener("click",  () => this.addRootLeaf());
         document.getElementById("btn-add-group")!.addEventListener("click", () => this.addRootGroup());
+
+        const pityTargetSel = document.getElementById("pity-target") as HTMLSelectElement | null;
+        if (pityTargetSel) {
+            pityTargetSel.addEventListener("change", () => {
+                this.pityTargetId = pityTargetSel.value || null;
+                this.rebuildPipeline();
+                this.renderPityTargetPicker();
+                this.renderPityProgress();
+            });
+        }
 
         this.bindRewardListEvents();
     }
@@ -296,10 +304,13 @@ class RewarderApp {
     // ===== Renders =====
 
     private renderAll(): void {
+        const pityDisplay = this.pityEnabled ? "flex" : "none";
         const row = document.getElementById("pity-config-row");
-        if (row) row.style.display = this.pityEnabled ? "flex" : "none";
-        this.renderRewardEditor();
+        if (row) row.style.display = pityDisplay;
+        const trow = document.getElementById("pity-target-row");
+        if (trow) trow.style.display = pityDisplay;
         this.updateRateSummary();
+        this.renderPityTargetPicker();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
@@ -310,6 +321,7 @@ class RewarderApp {
         const list = document.getElementById("reward-list");
         if (!list) return;
         list.innerHTML = this.rewardNodes.map(node => this.renderRootNode(node)).join("");
+        this.renderPityTargetPicker();
     }
 
     private renderRootNode(node: RewardNodeConfig): string {
@@ -319,9 +331,18 @@ class RewarderApp {
             : this.renderLeafNode(node, null, canDelete);
     }
 
+    private renderPityTargetPicker(): void {
+        const sel = document.getElementById("pity-target") as HTMLSelectElement | null;
+        if (!sel) return;
+        const choices = collectPityChoices(this.rewardNodes);
+        sel.innerHTML = choices
+            .map(c => `<option value="${c.id}"${c.id === this.pityTargetId ? " selected" : ""}>${escapeHtml(c.label)}</option>`)
+            .join("");
+    }
+
     private renderGroupNode(group: RewardNodeConfig, canDelete: boolean): string {
         const childrenHtml = group.children
-            .map(child => this.renderLeafNode(child, group.id, group.children.length > 1))
+            .map(child => this.renderLeafNode(child, group.id, group.children.length > 1, group.rate))
             .join("");
         const childSum = group.children.reduce((s, c) => s + c.rate, 0);
         const childOk  = group.children.length > 0 && Math.abs(childSum - 100) < 0.001;
@@ -344,7 +365,10 @@ class RewarderApp {
             </div>`;
     }
 
-    private renderLeafNode(leaf: RewardNodeConfig, parentId: string | null, canDelete: boolean): string {
+    private renderLeafNode(leaf: RewardNodeConfig, parentId: string | null, canDelete: boolean, groupRate?: number): string {
+        const effHtml = groupRate !== undefined
+            ? `<span class="eff-rate">${(groupRate * leaf.rate / 100).toFixed(2)}%</span>`
+            : "";
         return `
             <div class="tree-node tree-leaf" data-id="${leaf.id}"${parentId ? ` data-parent="${parentId}"` : ""}>
                 <div class="reward-config-row leaf-row">
@@ -355,7 +379,7 @@ class RewarderApp {
                     <input type="text" class="reward-name-input" value="${escapeHtml(leaf.name)}" placeholder="Name">
                     <div class="reward-rate-group">
                         <input type="number" class="reward-rate-input" value="${leaf.rate}" min="0" max="100" step="0.01">
-                        <span class="rate-unit">%</span>
+                        <span class="rate-unit">%</span>${effHtml}
                     </div>
                     <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>&#xd7;</button>
                 </div>
@@ -452,7 +476,7 @@ class RewarderApp {
         const pct     = Math.min(100, (counter / threshold) * 100);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
 
-        const targetName = this.findLeastProbableLeaf(this.rewardNodes, 1)?.config.name ?? "rarest reward";
+        const targetName = this.pityInterceptor?.targetName ?? "—";
 
         const countEl     = document.getElementById("pity-count");
         const thresholdEl = document.getElementById("pity-threshold-display");

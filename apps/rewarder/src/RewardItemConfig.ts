@@ -8,6 +8,12 @@ interface RewardNodeConfig {
     children: RewardNodeConfig[];
 }
 
+interface PityNodeChoice {
+    id: string;
+    label: string;
+    kind: "leaf" | "group";
+}
+
 function collectLeaves(nodes: readonly RewardNodeConfig[]): RewardNodeConfig[] {
     const result: RewardNodeConfig[] = [];
     for (const node of nodes) {
@@ -18,6 +24,44 @@ function collectLeaves(nodes: readonly RewardNodeConfig[]): RewardNodeConfig[] {
         }
     }
     return result;
+}
+
+function collectPityChoices(
+    nodes: readonly RewardNodeConfig[],
+    indent = "",
+): PityNodeChoice[] {
+    const result: PityNodeChoice[] = [];
+    for (const node of nodes) {
+        if (node.isGroup) {
+            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: "group" });
+            result.push(...collectPityChoices(node.children, indent + "\u00a0\u00a0"));
+        } else {
+            result.push({ id: node.id, label: indent + node.name, kind: "leaf" });
+        }
+    }
+    return result;
+}
+
+function findDefaultPityTarget(
+    nodes: readonly RewardNodeConfig[],
+    parentProb = 1,
+): RewardNodeConfig | null {
+    const total = nodes.reduce((s, n) => s + n.rate, 0);
+    if (total === 0) return null;
+    let best: { config: RewardNodeConfig; prob: number } | null = null;
+    for (const node of nodes) {
+        const prob = parentProb * (node.rate / total);
+        const candidate = node.isGroup
+            ? findDefaultPityTarget(node.children, prob)
+            : node;
+        const candidateProb = node.isGroup
+            ? (node.children.length > 0 ? parentProb * (node.rate / total) * (node.children.reduce((s, n) => s + n.rate, 0) > 0 ? node.children.reduce((min, n) => n.rate < min ? n.rate : min, Infinity) / node.children.reduce((s, n) => s + n.rate, 0) : 0) : 0)
+            : prob;
+        if (candidate && (!best || prob < best.prob)) {
+            best = { config: candidate, prob: candidateProb };
+        }
+    }
+    return best?.config ?? null;
 }
 
 function defaultRewardNodes(): RewardNodeConfig[] {

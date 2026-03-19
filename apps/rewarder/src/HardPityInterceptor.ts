@@ -3,18 +3,21 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
 
     public get counter(): number { return this._counter; }
 
-    public constructor(private _threshold: number) {}
+    public get targetName(): string { return this._target.name; }
+    public get targetId():   string { return this._target.id; }
+
+    public constructor(
+        private readonly _threshold: number,
+        private readonly _target: RewardNodeConfig,
+    ) {}
 
     public async intercept(
         ctx: RewardPipelineContext<Reward>,
         next: RewardNextHandler<Reward>,
     ): Promise<RewardResult<Reward>> {
-        const leastReward = this.getLeastProbableLeaf(ctx.tree.root);
-        if (leastReward.equals(Reward.Empty)) return next(ctx);
-
         const result = await next(ctx);
 
-        if (result.rewards.some(r => r.equals(leastReward))) {
+        if (this._isHit(result)) {
             this._counter = 0;
             return result;
         }
@@ -23,30 +26,16 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
             return result;
         }
         this._counter = 0;
-        return { rewards: [leastReward], path: result.path };
+        return this._forcePity(ctx);
     }
 
-    public getLeastProbableLeaf(root: IRewardTreeNode<Reward>): Reward {
-        const result = this.findMinProbLeaf(root, 1);
-        return result?.reward ?? Reward.Empty;
+    private _isHit(result: RewardResult<Reward>): boolean {
+        const leafIds = new Set(collectLeaves([this._target]).map(l => l.id));
+        return result.rewards.some(r => leafIds.has(r.id));
     }
 
-    private findMinProbLeaf(
-        node: IRewardTreeNode<Reward>,
-        prob: number,
-    ): { reward: Reward; prob: number } | null {
-        const edges = node.outgoingEdges.filter(e => e.weight > 0);
-        if (edges.length === 0) {
-            const r = node.reward;
-            if (r != null && !r.equals(Reward.Empty)) return { reward: r, prob };
-            return null;
-        }
-        const totalWeight = edges.reduce((s, e) => s + e.weight, 0);
-        let best: { reward: Reward; prob: number } | null = null;
-        for (const edge of edges) {
-            const child = this.findMinProbLeaf(edge.target, prob * (edge.weight / totalWeight));
-            if (child && (!best || child.prob < best.prob)) best = child;
-        }
-        return best;
+    private async _forcePity(ctx: RewardPipelineContext<Reward>): Promise<RewardResult<Reward>> {
+        const miniTree = await new DynamicRewardTreeFactory([this._target]).create(ctx.exec);
+        return ctx.resolver.resolve(miniTree, ctx.exec);
     }
 }

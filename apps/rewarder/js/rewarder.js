@@ -190,6 +190,38 @@ function collectLeaves(nodes) {
     }
     return result;
 }
+function collectPityChoices(nodes, indent = "") {
+    const result = [];
+    for (const node of nodes) {
+        if (node.isGroup) {
+            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: "group" });
+            result.push(...collectPityChoices(node.children, indent + "\u00a0\u00a0"));
+        }
+        else {
+            result.push({ id: node.id, label: indent + node.name, kind: "leaf" });
+        }
+    }
+    return result;
+}
+function findDefaultPityTarget(nodes, parentProb = 1) {
+    const total = nodes.reduce((s, n) => s + n.rate, 0);
+    if (total === 0)
+        return null;
+    let best = null;
+    for (const node of nodes) {
+        const prob = parentProb * (node.rate / total);
+        const candidate = node.isGroup
+            ? findDefaultPityTarget(node.children, prob)
+            : node;
+        const candidateProb = node.isGroup
+            ? (node.children.length > 0 ? parentProb * (node.rate / total) * (node.children.reduce((s, n) => s + n.rate, 0) > 0 ? node.children.reduce((min, n) => n.rate < min ? n.rate : min, Infinity) / node.children.reduce((s, n) => s + n.rate, 0) : 0) : 0)
+            : prob;
+        if (candidate && (!best || prob < best.prob)) {
+            best = { config: candidate, prob: candidateProb };
+        }
+    }
+    return best?.config ?? null;
+}
 function defaultRewardNodes() {
     return [
         {
@@ -239,16 +271,16 @@ class DynamicRewardTreeFactory {
 }
 class HardPityInterceptor {
     get counter() { return this._counter; }
-    constructor(_threshold) {
+    get targetName() { return this._target.name; }
+    get targetId() { return this._target.id; }
+    constructor(_threshold, _target) {
         this._threshold = _threshold;
+        this._target = _target;
         this._counter = 0;
     }
     async intercept(ctx, next) {
-        const leastReward = this.getLeastProbableLeaf(ctx.tree.root);
-        if (leastReward.equals(Reward.Empty))
-            return next(ctx);
         const result = await next(ctx);
-        if (result.rewards.some(r => r.equals(leastReward))) {
+        if (this._isHit(result)) {
             this._counter = 0;
             return result;
         }
@@ -257,31 +289,18 @@ class HardPityInterceptor {
             return result;
         }
         this._counter = 0;
-        return { rewards: [leastReward], path: result.path };
+        return this._forcePity(ctx);
     }
-    getLeastProbableLeaf(root) {
-        const result = this.findMinProbLeaf(root, 1);
-        return result?.reward ?? Reward.Empty;
+    _isHit(result) {
+        const leafIds = new Set(collectLeaves([this._target]).map(l => l.id));
+        return result.rewards.some(r => leafIds.has(r.id));
     }
-    findMinProbLeaf(node, prob) {
-        const edges = node.outgoingEdges.filter(e => e.weight > 0);
-        if (edges.length === 0) {
-            const r = node.reward;
-            if (r != null && !r.equals(Reward.Empty))
-                return { reward: r, prob };
-            return null;
-        }
-        const totalWeight = edges.reduce((s, e) => s + e.weight, 0);
-        let best = null;
-        for (const edge of edges) {
-            const child = this.findMinProbLeaf(edge.target, prob * (edge.weight / totalWeight));
-            if (child && (!best || child.prob < best.prob))
-                best = child;
-        }
-        return best;
+    async _forcePity(ctx) {
+        const miniTree = await new DynamicRewardTreeFactory([this._target]).create(ctx.exec);
+        return ctx.resolver.resolve(miniTree, ctx.exec);
     }
 }
-function buildPipeline(nodes, pityEnabled, pityThreshold) {
+function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig) {
     const treeFactory = new DynamicRewardTreeFactory(nodes);
     const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
     const collector = new SubtreeRewardCollector();
@@ -289,8 +308,11 @@ function buildPipeline(nodes, pityEnabled, pityThreshold) {
     const pipeline = new RewardPipeline(treeFactory, resolver);
     let pityInterceptor = null;
     if (pityEnabled) {
-        pityInterceptor = new HardPityInterceptor(pityThreshold);
-        pipeline.setInterceptors([pityInterceptor]);
+        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+        if (targetConfig) {
+            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+            pipeline.setInterceptors([pityInterceptor]);
+        }
     }
     return { pipeline, pityInterceptor };
 }
@@ -306,6 +328,7 @@ class RewarderApp {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
+        this.pityTargetId = null;
         this.nextId = 1;
         this.totalRolls = 0;
         this.rewardCounts = new Map();
@@ -320,9 +343,20 @@ class RewarderApp {
         this.renderAll();
     }
     rebuildPipeline() {
-        const { pipeline, pityInterceptor } = buildPipeline(this.rewardNodes, this.pityEnabled, this.pityThreshold);
+        // Invalidate stale target id
+        if (this.pityTargetId !== null && !this.findNode(this.pityTargetId, this.rewardNodes)) {
+            this.pityTargetId = null;
+        }
+        const targetConfig = this.pityTargetId
+            ? (this.findNode(this.pityTargetId, this.rewardNodes) ?? null)
+            : null;
+        const { pipeline, pityInterceptor } = buildPipeline(this.rewardNodes, this.pityEnabled, this.pityThreshold, targetConfig);
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
+        // Sync pityTargetId to whatever was actually chosen (handles first run auto-pick)
+        if (this.pityInterceptor) {
+            this.pityTargetId = this.pityInterceptor.targetId;
+        }
     }
     findNode(id, nodes) {
         for (const node of nodes) {
@@ -354,34 +388,19 @@ class RewarderApp {
     rootTotalRate() {
         return this.rewardNodes.reduce((s, n) => s + n.rate, 0);
     }
-    findLeastProbableLeaf(nodes, parentProb) {
-        const total = nodes.reduce((s, n) => s + n.rate, 0);
-        if (total === 0)
-            return null;
-        let best = null;
-        for (const node of nodes) {
-            const prob = parentProb * (node.rate / total);
-            if (node.isGroup) {
-                const child = this.findLeastProbableLeaf(node.children, prob);
-                if (child && (!best || child.prob < best.prob))
-                    best = child;
-            }
-            else {
-                if (!best || prob < best.prob)
-                    best = { config: node, prob };
-            }
-        }
-        return best;
-    }
     // ===== Events =====
     bindStaticEvents() {
         const pityToggle = document.getElementById("pity-toggle");
         const pityThreshInput = document.getElementById("pity-threshold");
         pityToggle.addEventListener("change", () => {
             this.pityEnabled = pityToggle.checked;
+            const pityDisplay = this.pityEnabled ? "flex" : "none";
             const row = document.getElementById("pity-config-row");
             if (row)
-                row.style.display = this.pityEnabled ? "flex" : "none";
+                row.style.display = pityDisplay;
+            const trow = document.getElementById("pity-target-row");
+            if (trow)
+                trow.style.display = pityDisplay;
             this.rebuildPipeline();
             this.renderPityProgress();
         });
@@ -397,6 +416,15 @@ class RewarderApp {
         document.getElementById("btn-reset").addEventListener("click", () => this.resetStats());
         document.getElementById("btn-add-leaf").addEventListener("click", () => this.addRootLeaf());
         document.getElementById("btn-add-group").addEventListener("click", () => this.addRootGroup());
+        const pityTargetSel = document.getElementById("pity-target");
+        if (pityTargetSel) {
+            pityTargetSel.addEventListener("change", () => {
+                this.pityTargetId = pityTargetSel.value || null;
+                this.rebuildPipeline();
+                this.renderPityTargetPicker();
+                this.renderPityProgress();
+            });
+        }
         this.bindRewardListEvents();
     }
     bindRewardListEvents() {
@@ -573,11 +601,15 @@ class RewarderApp {
     }
     // ===== Renders =====
     renderAll() {
+        const pityDisplay = this.pityEnabled ? "flex" : "none";
         const row = document.getElementById("pity-config-row");
         if (row)
-            row.style.display = this.pityEnabled ? "flex" : "none";
-        this.renderRewardEditor();
+            row.style.display = pityDisplay;
+        const trow = document.getElementById("pity-target-row");
+        if (trow)
+            trow.style.display = pityDisplay;
         this.updateRateSummary();
+        this.renderPityTargetPicker();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
@@ -588,6 +620,7 @@ class RewarderApp {
         if (!list)
             return;
         list.innerHTML = this.rewardNodes.map(node => this.renderRootNode(node)).join("");
+        this.renderPityTargetPicker();
     }
     renderRootNode(node) {
         const canDelete = this.rewardNodes.length > 1;
@@ -595,9 +628,18 @@ class RewarderApp {
             ? this.renderGroupNode(node, canDelete)
             : this.renderLeafNode(node, null, canDelete);
     }
+    renderPityTargetPicker() {
+        const sel = document.getElementById("pity-target");
+        if (!sel)
+            return;
+        const choices = collectPityChoices(this.rewardNodes);
+        sel.innerHTML = choices
+            .map(c => `<option value="${c.id}"${c.id === this.pityTargetId ? " selected" : ""}>${escapeHtml(c.label)}</option>`)
+            .join("");
+    }
     renderGroupNode(group, canDelete) {
         const childrenHtml = group.children
-            .map(child => this.renderLeafNode(child, group.id, group.children.length > 1))
+            .map(child => this.renderLeafNode(child, group.id, group.children.length > 1, group.rate))
             .join("");
         const childSum = group.children.reduce((s, c) => s + c.rate, 0);
         const childOk = group.children.length > 0 && Math.abs(childSum - 100) < 0.001;
@@ -619,7 +661,10 @@ class RewarderApp {
                 </div>
             </div>`;
     }
-    renderLeafNode(leaf, parentId, canDelete) {
+    renderLeafNode(leaf, parentId, canDelete, groupRate) {
+        const effHtml = groupRate !== undefined
+            ? `<span class="eff-rate">${(groupRate * leaf.rate / 100).toFixed(2)}%</span>`
+            : "";
         return `
             <div class="tree-node tree-leaf" data-id="${leaf.id}"${parentId ? ` data-parent="${parentId}"` : ""}>
                 <div class="reward-config-row leaf-row">
@@ -630,7 +675,7 @@ class RewarderApp {
                     <input type="text" class="reward-name-input" value="${escapeHtml(leaf.name)}" placeholder="Name">
                     <div class="reward-rate-group">
                         <input type="number" class="reward-rate-input" value="${leaf.rate}" min="0" max="100" step="0.01">
-                        <span class="rate-unit">%</span>
+                        <span class="rate-unit">%</span>${effHtml}
                     </div>
                     <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>&#xd7;</button>
                 </div>
@@ -719,7 +764,7 @@ class RewarderApp {
         const threshold = this.pityThreshold;
         const pct = Math.min(100, (counter / threshold) * 100);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
-        const targetName = this.findLeastProbableLeaf(this.rewardNodes, 1)?.config.name ?? "rarest reward";
+        const targetName = this.pityInterceptor?.targetName ?? "—";
         const countEl = document.getElementById("pity-count");
         const thresholdEl = document.getElementById("pity-threshold-display");
         const targetEl = document.getElementById("pity-target-name");

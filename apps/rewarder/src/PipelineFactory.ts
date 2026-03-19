@@ -2,6 +2,7 @@ function buildPipeline(
     nodes: readonly RewardNodeConfig[],
     pityEnabled: boolean,
     pityThreshold: number,
+    pityTargetConfig: RewardNodeConfig | null,
 ): { pipeline: RewardPipeline<Reward>; pityInterceptor: HardPityInterceptor | null } {
     const treeFactory = new DynamicRewardTreeFactory(nodes);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
@@ -11,8 +12,11 @@ function buildPipeline(
 
     let pityInterceptor: HardPityInterceptor | null = null;
     if (pityEnabled) {
-        pityInterceptor = new HardPityInterceptor(pityThreshold);
-        pipeline.setInterceptors([pityInterceptor]);
+        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+        if (targetConfig) {
+            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+            pipeline.setInterceptors([pityInterceptor]);
+        }
     }
 
     return { pipeline, pityInterceptor };
