@@ -441,6 +441,7 @@ class RewarderApp {
                 return;
             if (target.classList.contains("reward-rate-input")) {
                 node.rate = parseFloat(target.value) || 0;
+                this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
                 this.rebuildPipeline();
             }
@@ -608,12 +609,23 @@ class RewarderApp {
         const trow = document.getElementById("pity-target-row");
         if (trow)
             trow.style.display = pityDisplay;
+        this.renderRewardEditor();
         this.updateRateSummary();
-        this.renderPityTargetPicker();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
         this.renderHistory();
+    }
+    updateEffectiveRatesInPlace() {
+        for (const node of this.rewardNodes) {
+            if (!node.isGroup)
+                continue;
+            for (const child of node.children) {
+                const effEl = document.querySelector(`.tree-node[data-id="${child.id}"] .eff-rate`);
+                if (effEl)
+                    effEl.textContent = `${(node.rate * child.rate / 100).toFixed(2)}%`;
+            }
+        }
     }
     renderRewardEditor() {
         const list = document.getElementById("reward-list");

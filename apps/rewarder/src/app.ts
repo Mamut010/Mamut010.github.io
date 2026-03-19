@@ -136,6 +136,7 @@ class RewarderApp {
 
             if (target.classList.contains("reward-rate-input")) {
                 node.rate = parseFloat((target as HTMLInputElement).value) || 0;
+                this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
                 this.rebuildPipeline();
             } else if (target.classList.contains("reward-color-input")) {
@@ -309,12 +310,22 @@ class RewarderApp {
         if (row) row.style.display = pityDisplay;
         const trow = document.getElementById("pity-target-row");
         if (trow) trow.style.display = pityDisplay;
+        this.renderRewardEditor();
         this.updateRateSummary();
-        this.renderPityTargetPicker();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
         this.renderHistory();
+    }
+
+    private updateEffectiveRatesInPlace(): void {
+        for (const node of this.rewardNodes) {
+            if (!node.isGroup) continue;
+            for (const child of node.children) {
+                const effEl = document.querySelector<HTMLElement>(`.tree-node[data-id="${child.id}"] .eff-rate`);
+                if (effEl) effEl.textContent = `${(node.rate * child.rate / 100).toFixed(2)}%`;
+            }
+        }
     }
 
     private renderRewardEditor(): void {
