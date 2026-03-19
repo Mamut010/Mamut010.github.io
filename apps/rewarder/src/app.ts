@@ -65,6 +65,7 @@ class RewarderApp {
         const sum = nodes.reduce((s, n) => s + n.rate, 0);
         if (Math.abs(sum - 100) >= 0.001) return false;
         for (const n of nodes) {
+            if (n.rate < 0) return false;
             if (n.isGroup && !this.validateTree(n.children)) return false;
         }
         return true;
@@ -135,7 +136,9 @@ class RewarderApp {
             if (!node) return;
 
             if (target.classList.contains("reward-rate-input")) {
-                node.rate = parseFloat((target as HTMLInputElement).value) || 0;
+                const raw = parseFloat((target as HTMLInputElement).value);
+                node.rate = isNaN(raw) ? 0 : Math.max(0, raw);
+                (target as HTMLInputElement).value = String(node.rate);
                 this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
                 this.rebuildPipeline();
