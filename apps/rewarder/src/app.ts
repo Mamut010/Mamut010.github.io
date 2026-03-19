@@ -29,12 +29,15 @@ class Reward {
 }
 
 class FixedRateRewardTreeFactory implements IRewardTreeFactory<Reward> {
-    public constructor(public readonly rates: ReadonlyMap<Rarity, number>) {}
+    public constructor(
+        public readonly rates: ReadonlyMap<Rarity, number>,
+        public readonly names: ReadonlyMap<Rarity, string>,
+    ) {}
 
     public async create(executionContext: RewardExecutionContext): Promise<IRewardTree<Reward>> {
-        const commonNode    = new RewardTreeNode(new Reward("Common Reward",     Rarity.Common));
-        const rareNode      = new RewardTreeNode(new Reward("Rare Reward",       Rarity.Rare));
-        const superRareNode = new RewardTreeNode(new Reward("Super Rare Reward", Rarity.SuperRare));
+        const commonNode    = new RewardTreeNode(new Reward(this.names.get(Rarity.Common)    ?? "Common Reward",     Rarity.Common));
+        const rareNode      = new RewardTreeNode(new Reward(this.names.get(Rarity.Rare)      ?? "Rare Reward",       Rarity.Rare));
+        const superRareNode = new RewardTreeNode(new Reward(this.names.get(Rarity.SuperRare) ?? "Super Rare Reward", Rarity.SuperRare));
         const rootNode      = new RewardTreeNode<Reward>(Reward.Empty);
 
         rootNode.connect(commonNode,    this.rates.get(Rarity.Common)    ?? 0);
@@ -87,6 +90,7 @@ function buildPipeline(
     rarePct: number,
     pityEnabled: boolean,
     pityThreshold: number,
+    rewardNames: ReadonlyMap<Rarity, string>,
 ): { pipeline: RewardPipeline<Reward>; pityInterceptor: HardPityInterceptor | null } {
     const commonPct = 100 - superRarePct - rarePct;
     const rates = new Map<Rarity, number>([
@@ -95,7 +99,7 @@ function buildPipeline(
         [Rarity.Common,    commonPct],
     ]);
 
-    const treeFactory = new FixedRateRewardTreeFactory(rates);
+    const treeFactory = new FixedRateRewardTreeFactory(rates, rewardNames);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
     const collector   = new SubtreeRewardCollector<Reward>();
     const resolver    = new RewardResolver<Reward>(walker, collector);
@@ -122,6 +126,11 @@ class RewarderApp {
     private rarePct      = 15.00;
     private pityEnabled  = true;
     private pityThreshold = 90;
+    private rewardNames = new Map<Rarity, string>([
+        [Rarity.Common,    "Common Reward"],
+        [Rarity.Rare,      "Rare Reward"],
+        [Rarity.SuperRare, "Super Rare Reward"],
+    ]);
 
     private totalRolls = 0;
     private rarityCounts = new Map<Rarity, number>([
@@ -148,6 +157,7 @@ class RewarderApp {
             this.rarePct,
             this.pityEnabled,
             this.pityThreshold,
+            this.rewardNames,
         );
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
@@ -158,6 +168,20 @@ class RewarderApp {
         const rareInput       = document.getElementById("rare-rate")      as HTMLInputElement;
         const pityToggle      = document.getElementById("pity-toggle")    as HTMLInputElement;
         const pityThreshInput = document.getElementById("pity-threshold") as HTMLInputElement;
+
+        const srNameInput     = document.getElementById("sr-name")     as HTMLInputElement;
+        const rareNameInput   = document.getElementById("rare-name")   as HTMLInputElement;
+        const commonNameInput = document.getElementById("common-name") as HTMLInputElement;
+
+        const onNameChange = () => {
+            this.rewardNames.set(Rarity.SuperRare, srNameInput.value.trim()     || "Super Rare Reward");
+            this.rewardNames.set(Rarity.Rare,      rareNameInput.value.trim()   || "Rare Reward");
+            this.rewardNames.set(Rarity.Common,    commonNameInput.value.trim() || "Common Reward");
+            this.rebuildPipeline();
+        };
+        srNameInput.addEventListener("change",     onNameChange);
+        rareNameInput.addEventListener("change",   onNameChange);
+        commonNameInput.addEventListener("change", onNameChange);
 
         const onRateChange = () => {
             this.superRarePct = parseFloat(srInput.value)   || 0;

@@ -202,13 +202,14 @@ class Reward {
     }
 }
 class FixedRateRewardTreeFactory {
-    constructor(rates) {
+    constructor(rates, names) {
         this.rates = rates;
+        this.names = names;
     }
     async create(executionContext) {
-        const commonNode = new RewardTreeNode(new Reward("Common Reward", Rarity.Common));
-        const rareNode = new RewardTreeNode(new Reward("Rare Reward", Rarity.Rare));
-        const superRareNode = new RewardTreeNode(new Reward("Super Rare Reward", Rarity.SuperRare));
+        const commonNode = new RewardTreeNode(new Reward(this.names.get(Rarity.Common) ?? "Common Reward", Rarity.Common));
+        const rareNode = new RewardTreeNode(new Reward(this.names.get(Rarity.Rare) ?? "Rare Reward", Rarity.Rare));
+        const superRareNode = new RewardTreeNode(new Reward(this.names.get(Rarity.SuperRare) ?? "Super Rare Reward", Rarity.SuperRare));
         const rootNode = new RewardTreeNode(Reward.Empty);
         rootNode.connect(commonNode, this.rates.get(Rarity.Common) ?? 0);
         rootNode.connect(rareNode, this.rates.get(Rarity.Rare) ?? 0);
@@ -245,14 +246,14 @@ class HardPityInterceptor {
     }
 }
 // ===== Pipeline Factory =====
-function buildPipeline(superRarePct, rarePct, pityEnabled, pityThreshold) {
+function buildPipeline(superRarePct, rarePct, pityEnabled, pityThreshold, rewardNames) {
     const commonPct = 100 - superRarePct - rarePct;
     const rates = new Map([
         [Rarity.SuperRare, superRarePct],
         [Rarity.Rare, rarePct],
         [Rarity.Common, commonPct],
     ]);
-    const treeFactory = new FixedRateRewardTreeFactory(rates);
+    const treeFactory = new FixedRateRewardTreeFactory(rates, rewardNames);
     const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
     const collector = new SubtreeRewardCollector();
     const resolver = new RewardResolver(walker, collector);
@@ -270,6 +271,11 @@ class RewarderApp {
         this.rarePct = 15.00;
         this.pityEnabled = true;
         this.pityThreshold = 90;
+        this.rewardNames = new Map([
+            [Rarity.Common, "Common Reward"],
+            [Rarity.Rare, "Rare Reward"],
+            [Rarity.SuperRare, "Super Rare Reward"],
+        ]);
         this.totalRolls = 0;
         this.rarityCounts = new Map([
             [Rarity.Common, 0],
@@ -287,7 +293,7 @@ class RewarderApp {
         this.renderAll();
     }
     rebuildPipeline() {
-        const { pipeline, pityInterceptor } = buildPipeline(this.superRarePct, this.rarePct, this.pityEnabled, this.pityThreshold);
+        const { pipeline, pityInterceptor } = buildPipeline(this.superRarePct, this.rarePct, this.pityEnabled, this.pityThreshold, this.rewardNames);
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
     }
@@ -296,6 +302,18 @@ class RewarderApp {
         const rareInput = document.getElementById("rare-rate");
         const pityToggle = document.getElementById("pity-toggle");
         const pityThreshInput = document.getElementById("pity-threshold");
+        const srNameInput = document.getElementById("sr-name");
+        const rareNameInput = document.getElementById("rare-name");
+        const commonNameInput = document.getElementById("common-name");
+        const onNameChange = () => {
+            this.rewardNames.set(Rarity.SuperRare, srNameInput.value.trim() || "Super Rare Reward");
+            this.rewardNames.set(Rarity.Rare, rareNameInput.value.trim() || "Rare Reward");
+            this.rewardNames.set(Rarity.Common, commonNameInput.value.trim() || "Common Reward");
+            this.rebuildPipeline();
+        };
+        srNameInput.addEventListener("change", onNameChange);
+        rareNameInput.addEventListener("change", onNameChange);
+        commonNameInput.addEventListener("change", onNameChange);
         const onRateChange = () => {
             this.superRarePct = parseFloat(srInput.value) || 0;
             this.rarePct = parseFloat(rareInput.value) || 0;
