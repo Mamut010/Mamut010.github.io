@@ -73,7 +73,7 @@ body {
 
 /* ===== Config Panel ===== */
 .config-panel {
-    flex: 0 0 270px;
+    flex: 0 0 310px;
     display: flex;
     flex-direction: column;
     gap: 1em;
@@ -103,28 +103,31 @@ body {
     margin-bottom: 0.75em;
 }
 
-.btn-add-reward {
+.add-node-buttons {
+    display: flex;
+    gap: 0.3em;
+}
+
+.btn-add-node {
     font-family: var(--font);
-    font-size: 0.76em;
+    font-size: 0.72em;
     font-weight: 700;
     background: var(--accent-dim);
     border: 1px solid var(--accent);
     border-radius: 6px;
     color: var(--accent);
     cursor: pointer;
-    padding: 0.28em 0.7em;
+    padding: 0.28em 0.55em;
     transition: background 0.15s;
 }
-.btn-add-reward:hover { background: rgba(192,132,252,0.28); }
+.btn-add-node:hover { background: rgba(192,132,252,0.28); }
 
 .reward-config-row {
     display: flex;
     align-items: center;
     gap: 0.4em;
     padding: 0.42em 0;
-    border-bottom: 1px solid var(--border);
 }
-.reward-config-row:last-of-type { border-bottom: none; }
 
 .color-swatches {
     display: flex;
@@ -181,6 +184,13 @@ body {
 }
 .reward-rate-input:focus { outline: none; border-color: var(--accent); }
 
+.eff-rate {
+    font-size: 0.74em;
+    color: var(--text-dim);
+    white-space: nowrap;
+    margin-left: 0.15em;
+}
+
 .btn-delete-reward {
     background: none;
     border: 1px solid transparent;
@@ -198,6 +208,62 @@ body {
     border-color: rgba(239, 68, 68, 0.45);
 }
 .btn-delete-reward:disabled { opacity: 0.22; cursor: default; }
+
+/* ===== Tree Editor ===== */
+.tree-node {
+    border-bottom: 1px solid var(--border);
+}
+.tree-node:last-child { border-bottom: none; }
+
+.group-row {
+    display: flex;
+    align-items: center;
+    gap: 0.36em;
+    padding: 0.42em 0 0.3em;
+}
+
+.group-icon {
+    font-size: 0.95em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    user-select: none;
+    line-height: 1;
+}
+
+.group-children {
+    margin-left: 0.9em;
+    padding-left: 0.7em;
+    border-left: 2px solid var(--border);
+    margin-bottom: 0.3em;
+}
+.group-children .tree-node { border-bottom: none; }
+
+.group-rate-summary {
+    font-size: 0.7em;
+    text-align: right;
+    padding: 0.1em 0.2em 0.22em;
+    font-weight: 600;
+}
+.rate-ok   { color: #22c55e; }
+.rate-warn { color: #ef4444; }
+
+.btn-add-child {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.1em 0.35em;
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+}
+.btn-add-child:hover {
+    color: var(--accent);
+    border-color: rgba(192, 132, 252, 0.4);
+}
 
 .rate-summary {
     display: flex;
@@ -277,6 +343,25 @@ body {
     text-align: right;
 }
 .pity-input:focus { outline: none; border-color: var(--accent); }
+
+.pity-target-row {
+    margin-top: 0.45em;
+}
+
+.pity-target-select {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.8em;
+    padding: 0.3em 0.5em;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+.pity-target-select:focus { outline: none; border-color: var(--accent); }
+.pity-target-select option { background: var(--surface); }
 
 /* ===== Roll Buttons ===== */
 .roll-buttons {

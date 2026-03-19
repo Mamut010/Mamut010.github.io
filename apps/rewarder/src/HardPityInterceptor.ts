@@ -3,19 +3,21 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
 
     public get counter(): number { return this._counter; }
 
-    public constructor(private _threshold: number) {}
+    public get targetName(): string { return this._target.name; }
+    public get targetId():   string { return this._target.id; }
+
+    public constructor(
+        private readonly _threshold: number,
+        private readonly _target: RewardNodeConfig,
+    ) {}
 
     public async intercept(
         ctx: RewardPipelineContext<Reward>,
         next: RewardNextHandler<Reward>,
     ): Promise<RewardResult<Reward>> {
-        const edges = ctx.tree.root.outgoingEdges;
-        if (edges.length === 0) return next(ctx);
-
-        const leastReward = this.getLeastWeightedReward(edges);
         const result = await next(ctx);
 
-        if (result.rewards.some(r => r.equals(leastReward))) {
+        if (this._isHit(result)) {
             this._counter = 0;
             return result;
         }
@@ -24,12 +26,17 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
             return result;
         }
         this._counter = 0;
-        return { rewards: [leastReward], path: result.path };
+        return this._forcePity(ctx);
     }
 
-    public getLeastWeightedReward(edges: readonly IRewardTreeEdge<Reward>[]): Reward {
-        const valid = edges.filter(e => e.weight > 0 && e.target.reward != null);
-        if (valid.length === 0) return Reward.Empty;
-        return valid.reduce((min, e) => e.weight < min.weight ? e : min).target.reward!;
+    private _isHit(result: RewardResult<Reward>): boolean {
+        const leafIds = new Set(collectLeaves([this._target]).map(l => l.id));
+        return result.rewards.some(r => leafIds.has(r.id));
+    }
+
+    private async _forcePity(ctx: RewardPipelineContext<Reward>): Promise<RewardResult<Reward>> {
+        const pityConfig = { ...this._target, rate: 100 };
+        const pityTree = await new DynamicRewardTreeFactory([pityConfig]).create(ctx.exec);
+        return ctx.resolver.resolve(pityTree, ctx.exec);
     }
 }
