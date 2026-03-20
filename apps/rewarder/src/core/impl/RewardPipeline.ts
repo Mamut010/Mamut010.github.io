@@ -31,8 +31,9 @@ class RewardPipeline<TReward> implements IRewardPipeline<TReward> {
     private async createExecutionContext(executionContext: RewardExecutionContext): Promise<RewardPipelineContext<TReward>> {
         return {
             exec: executionContext,
-            tree: await this.treeFactory.create(executionContext),
+            treeFactory: this.treeFactory,
             resolver: this.resolver,
+            tree: await this.treeFactory.create(executionContext),
         };
     }
 }

@@ -1,15 +1,20 @@
 function buildPipeline(
-    nodes:            readonly RewardNodeConfig[],
-    pityEnabled:      boolean,
-    pityThreshold:    number,
-    pityTargetConfig: RewardNodeConfig | null,
-    stdPityEnabled:   boolean,
-    stdPityThreshold: number,
-    stdPityNodes:     readonly RewardNodeConfig[],
+    nodes:                     readonly RewardNodeConfig[],
+    pityEnabled:               boolean,
+    pityThreshold:             number,
+    pityTargetConfig:          RewardNodeConfig | null,
+    stdPityEnabled:            boolean,
+    stdPityThreshold:          number,
+    stdPityNodes:              readonly RewardNodeConfig[],
+    featuredPityEnabled:       boolean,
+    featuredPityThreshold:     number,
+    featuredPityGroupConfig:   RewardNodeConfig | null,
+    featuredPityFeaturedConfig: RewardNodeConfig | null,
 ): {
-    pipeline:           RewardPipeline<Reward>;
-    pityInterceptor:    HardPityInterceptor    | null;
-    stdPityInterceptor: StandardPityInterceptor | null;
+    pipeline:                RewardPipeline<Reward>;
+    pityInterceptor:         HardPityInterceptor     | null;
+    stdPityInterceptor:      StandardPityInterceptor  | null;
+    featuredPityInterceptor: FeaturedPityInterceptor  | null;
 } {
     const treeFactory = new RewardTreeFactory(nodes);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
@@ -17,8 +22,18 @@ function buildPipeline(
     const resolver    = new RewardResolver<Reward>(walker, collector);
     const pipeline    = new RewardPipeline(treeFactory, resolver);
 
-    let pityInterceptor:    HardPityInterceptor    | null = null;
-    let stdPityInterceptor: StandardPityInterceptor | null = null;
+    let pityInterceptor:         HardPityInterceptor     | null = null;
+    let stdPityInterceptor:      StandardPityInterceptor  | null = null;
+    let featuredPityInterceptor: FeaturedPityInterceptor  | null = null;
+
+    if (featuredPityEnabled && featuredPityGroupConfig !== null && featuredPityFeaturedConfig !== null) {
+        featuredPityInterceptor = new FeaturedPityInterceptor(
+            featuredPityThreshold,
+            featuredPityGroupConfig,
+            featuredPityFeaturedConfig,
+            nodes,
+        );
+    }
 
     if (stdPityEnabled && stdPityNodes.length > 0) {
         const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
@@ -34,11 +49,13 @@ function buildPipeline(
         }
     }
 
-    // Standard pity first: overrides the tree so downstream interceptors see the pity pool.
+    // Featured first (patches group children), then Standard (may override the whole tree),
+    // then Hard (forces a specific node within whatever tree is active).
     const interceptors: IRewardInterceptor<Reward>[] = [];
-    if (stdPityInterceptor) interceptors.push(stdPityInterceptor);
-    if (pityInterceptor)    interceptors.push(pityInterceptor);
+    if (featuredPityInterceptor) interceptors.push(featuredPityInterceptor);
+    if (stdPityInterceptor)      interceptors.push(stdPityInterceptor);
+    if (pityInterceptor)         interceptors.push(pityInterceptor);
     pipeline.setInterceptors(interceptors);
 
-    return { pipeline, pityInterceptor, stdPityInterceptor };
+    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor };
 }

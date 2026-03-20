@@ -12,7 +12,7 @@
  * tree override is visible to downstream interceptors (HardPityInterceptor will
  * then evaluate its hit-check against the pity-pool result).
  */
-class StandardPityInterceptor extends BasePityInterceptor {
+class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
     public constructor(
         threshold: number,
         private readonly _pityNodes: readonly RewardNodeConfig[],

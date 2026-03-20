@@ -12,6 +12,11 @@ class RewarderService {
     stdPityThreshold = 10;
     stdPityEntries:  StandardPityEntry[] = [];
 
+    featuredPityEnabled    = false;
+    featuredPityThreshold  = 2;
+    featuredPityGroupId:    string | null = null;
+    featuredPityFeaturedId: string | null = null;
+
     totalRolls   = 0;
     rewardCounts = new Map<string, number>();
     history: RollRecord[] = [];
@@ -19,6 +24,7 @@ class RewarderService {
     private pipeline!: RewardPipeline<Reward>;
     pityInterceptor:    HardPityInterceptor    | null = null;
     stdPityInterceptor: StandardPityInterceptor | null = null;
+    featuredPityInterceptor: FeaturedPityInterceptor | null = null;
     private rng = new MathRandomNumberGenerator();
     private readonly _colorProvider: IRewardColorProvider;
 
@@ -44,7 +50,18 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor, stdPityInterceptor } = buildPipeline(
+
+        const featuredGroup    = this.featuredPityGroupId
+            ? (this.findNode(this.featuredPityGroupId) ?? null)
+            : null;
+        const featuredFeatured = this.featuredPityFeaturedId
+            ? (this.findNode(this.featuredPityFeaturedId) ?? null)
+            : null;
+        // Nullify IDs that no longer exist in the tree.
+        if (!featuredGroup)    this.featuredPityGroupId    = null;
+        if (!featuredFeatured) this.featuredPityFeaturedId = null;
+
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor } = buildPipeline(
             this.rewardNodes,
             this.pityEnabled,
             this.pityThreshold,
@@ -52,10 +69,15 @@ class RewarderService {
             this.stdPityEnabled,
             this.stdPityThreshold,
             this.resolvedStdPityNodes(),
+            this.featuredPityEnabled,
+            this.featuredPityThreshold,
+            featuredGroup,
+            featuredFeatured,
         );
-        this.pipeline           = pipeline;
-        this.pityInterceptor    = pityInterceptor;
-        this.stdPityInterceptor = stdPityInterceptor;
+        this.pipeline                = pipeline;
+        this.pityInterceptor         = pityInterceptor;
+        this.stdPityInterceptor      = stdPityInterceptor;
+        this.featuredPityInterceptor = featuredPityInterceptor;
         if (this.pityInterceptor) {
             this.pityTargetId = this.pityInterceptor.targetId;
         }
@@ -150,6 +172,11 @@ class RewarderService {
                 this.rewardNodes.splice(idx, 1);
                 // Clean up any std pity entry referencing this root node.
                 this.stdPityEntries = this.stdPityEntries.filter(e => e.nodeId !== id);
+                // Clean up featured pity if group is removed.
+                if (this.featuredPityGroupId === id) {
+                    this.featuredPityGroupId    = null;
+                    this.featuredPityFeaturedId = null;
+                }
                 return;
             }
         }
@@ -159,6 +186,10 @@ class RewarderService {
                 const idx = group.children.findIndex(n => n.id === id);
                 if (idx !== -1) {
                     group.children.splice(idx, 1);
+                    // Clean up featured pity if the featured child is removed.
+                    if (this.featuredPityFeaturedId === id) {
+                        this.featuredPityFeaturedId = null;
+                    }
                     return;
                 }
             }
@@ -198,6 +229,10 @@ class RewarderService {
             stdPityEnabled:   this.stdPityEnabled,
             stdPityThreshold: this.stdPityThreshold,
             stdPityEntries:   this.stdPityEntries,
+            featuredPityEnabled:    this.featuredPityEnabled,
+            featuredPityThreshold:  this.featuredPityThreshold,
+            featuredPityGroupId:    this.featuredPityGroupId,
+            featuredPityFeaturedId: this.featuredPityFeaturedId,
         };
         storageSaveProfiles(this.profiles);
     }
@@ -211,8 +246,9 @@ class RewarderService {
                 rewardId:   h.reward.id,
                 rewardName: h.reward.name,
             })),
-            pityCounter:    this.pityInterceptor?.counter    ?? 0,
-            stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
+            pityCounter:         this.pityInterceptor?.counter         ?? 0,
+            stdPityCounter:      this.stdPityInterceptor?.counter      ?? 0,
+            featuredPityCounter: this.featuredPityInterceptor?.counter ?? 0,
         };
         storageSaveStats(this.activeProfileId, stats);
     }
@@ -237,8 +273,9 @@ class RewarderService {
         const stats = storageLoadStats(id);
         if (stats) {
             this.applyStats(stats);
-            if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
-            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            if (this.pityInterceptor)         this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.stdPityInterceptor)      this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            if (this.featuredPityInterceptor) this.featuredPityInterceptor.setCounter(stats.featuredPityCounter ?? 0);
         }
         return true;
     }
@@ -257,6 +294,10 @@ class RewarderService {
             stdPityEnabled:   false,
             stdPityThreshold: 10,
             stdPityEntries:   [],
+            featuredPityEnabled:    false,
+            featuredPityThreshold:  2,
+            featuredPityGroupId:    null,
+            featuredPityFeaturedId: null,
         };
         this.profiles.push(profile);
         storageSaveProfiles(this.profiles);
@@ -297,7 +338,9 @@ class RewarderService {
             const stats = storageLoadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
-                if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
+                if (this.pityInterceptor)         this.pityInterceptor.setCounter(stats.pityCounter);
+                if (this.stdPityInterceptor)      this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+                if (this.featuredPityInterceptor) this.featuredPityInterceptor.setCounter(stats.featuredPityCounter ?? 0);
             }
             return true;
         }
@@ -327,6 +370,10 @@ class RewarderService {
                 stdPityEnabled:   false,
                 stdPityThreshold: 10,
                 stdPityEntries:   [],
+                featuredPityEnabled:    false,
+                featuredPityThreshold:  2,
+                featuredPityGroupId:    null,
+                featuredPityFeaturedId: null,
             };
             profiles = [firstProfile];
             storageSaveProfiles(profiles);
@@ -345,8 +392,9 @@ class RewarderService {
         const stats = storageLoadStats(active.id);
         if (stats) {
             this.applyStats(stats);
-            if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
-            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            if (this.pityInterceptor)         this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.stdPityInterceptor)      this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            if (this.featuredPityInterceptor) this.featuredPityInterceptor.setCounter(stats.featuredPityCounter ?? 0);
         }
     }
 
@@ -359,6 +407,10 @@ class RewarderService {
         this.stdPityEnabled   = profile.stdPityEnabled   ?? false;
         this.stdPityThreshold = profile.stdPityThreshold ?? 10;
         this.stdPityEntries   = profile.stdPityEntries   ?? [];
+        this.featuredPityEnabled    = profile.featuredPityEnabled    ?? false;
+        this.featuredPityThreshold  = profile.featuredPityThreshold  ?? 2;
+        this.featuredPityGroupId    = profile.featuredPityGroupId    ?? null;
+        this.featuredPityFeaturedId = profile.featuredPityFeaturedId ?? null;
     }
 
     private applyStats(stats: PersistedStats): void {

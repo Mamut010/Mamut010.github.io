@@ -8,7 +8,7 @@
 //   _isHit()       — decides whether a result counts as a natural pity hit
 //   _buildPityTree() — constructs the reward tree used for the forced pull
 
-abstract class BasePityInterceptor implements IRewardInterceptor<Reward> {
+abstract class BaseRollCountingPityInterceptor implements IRewardInterceptor<Reward> {
     private _counter = 0;
 
     public get counter(): number           { return this._counter; }

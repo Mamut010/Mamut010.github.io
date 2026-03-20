@@ -13,6 +13,10 @@ interface RewardProfile {
     stdPityEnabled:   boolean;
     stdPityThreshold: number;
     stdPityEntries:   StandardPityEntry[];
+    featuredPityEnabled:    boolean;
+    featuredPityThreshold:  number;
+    featuredPityGroupId:    string | null;
+    featuredPityFeaturedId: string | null;
 }
 
 interface PersistedStats {
@@ -21,6 +25,7 @@ interface PersistedStats {
     history: Array<{ rollNum: number; rewardId: string; rewardName: string }>;
     pityCounter: number;
     stdPityCounter: number;
+    featuredPityCounter: number;
 }
 
 function storageKey(suffix: string): string {
