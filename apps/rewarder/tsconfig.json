@@ -36,6 +36,7 @@
         "src/models/RewardItemConfig.ts",
         "src/models/Reward.ts",
         "src/pity/HardPityInterceptor.ts",
+        "src/pity/StandardPityInterceptor.ts",
         "src/services/PipelineFactory.ts",
         "src/utils/DomUtils.ts",
         "src/services/Storage.ts",

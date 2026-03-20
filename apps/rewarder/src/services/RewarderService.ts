@@ -8,12 +8,17 @@ class RewarderService {
     pityTargetId: string | null = null;
     nextId         = 1;
 
+    stdPityEnabled   = false;
+    stdPityThreshold = 10;
+    stdPityEntries:  StandardPityEntry[] = [];
+
     totalRolls   = 0;
     rewardCounts = new Map<string, number>();
     history: RollRecord[] = [];
 
     private pipeline!: RewardPipeline<Reward>;
-    pityInterceptor: HardPityInterceptor | null = null;
+    pityInterceptor:    HardPityInterceptor    | null = null;
+    stdPityInterceptor: StandardPityInterceptor | null = null;
     private rng = new MathRandomNumberGenerator();
 
     profiles: RewardProfile[] = [];
@@ -34,18 +39,32 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor } = buildPipeline(
+        const { pipeline, pityInterceptor, stdPityInterceptor } = buildPipeline(
             this.rewardNodes,
             this.pityEnabled,
             this.pityThreshold,
             targetConfig,
+            this.stdPityEnabled,
+            this.stdPityThreshold,
+            this.resolvedStdPityNodes(),
         );
-        this.pipeline = pipeline;
-        this.pityInterceptor = pityInterceptor;
+        this.pipeline           = pipeline;
+        this.pityInterceptor    = pityInterceptor;
+        this.stdPityInterceptor = stdPityInterceptor;
         if (this.pityInterceptor) {
             this.pityTargetId = this.pityInterceptor.targetId;
         }
         this.saveProfileConfig();
+    }
+
+    /** Resolves stdPityEntries into full RewardNodeConfig objects from the active pool. */
+    resolvedStdPityNodes(): RewardNodeConfig[] {
+        const result: RewardNodeConfig[] = [];
+        for (const entry of this.stdPityEntries) {
+            const node = this.rewardNodes.find(n => n.id === entry.nodeId);
+            if (node) result.push({ ...node, rate: entry.rate });
+        }
+        return result;
     }
 
     // ===== Node Queries =====
@@ -121,6 +140,8 @@ class RewarderService {
             const idx = this.rewardNodes.findIndex(n => n.id === id);
             if (idx !== -1) {
                 this.rewardNodes.splice(idx, 1);
+                // Clean up any std pity entry referencing this root node.
+                this.stdPityEntries = this.stdPityEntries.filter(e => e.nodeId !== id);
                 return;
             }
         }
@@ -161,25 +182,29 @@ class RewarderService {
         if (idx === -1) return;
         this.profiles[idx] = {
             ...this.profiles[idx],
-            nodes:         this.rewardNodes,
-            pityEnabled:   this.pityEnabled,
-            pityThreshold: this.pityThreshold,
-            pityTargetId:  this.pityTargetId,
-            nextId:        this.nextId,
+            nodes:            this.rewardNodes,
+            pityEnabled:      this.pityEnabled,
+            pityThreshold:    this.pityThreshold,
+            pityTargetId:     this.pityTargetId,
+            nextId:           this.nextId,
+            stdPityEnabled:   this.stdPityEnabled,
+            stdPityThreshold: this.stdPityThreshold,
+            stdPityEntries:   this.stdPityEntries,
         };
         storageSaveProfiles(this.profiles);
     }
 
     saveCurrentStats(): void {
         const stats: PersistedStats = {
-            totalRolls:   this.totalRolls,
-            rewardCounts: Object.fromEntries(this.rewardCounts),
-            history:      this.history.map(h => ({
+            totalRolls:    this.totalRolls,
+            rewardCounts:  Object.fromEntries(this.rewardCounts),
+            history:       this.history.map(h => ({
                 rollNum:    h.rollNum,
                 rewardId:   h.reward.id,
                 rewardName: h.reward.name,
             })),
-            pityCounter: this.pityInterceptor?.counter ?? 0,
+            pityCounter:    this.pityInterceptor?.counter    ?? 0,
+            stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
         };
         storageSaveStats(this.activeProfileId, stats);
     }
@@ -204,7 +229,8 @@ class RewarderService {
         const stats = storageLoadStats(id);
         if (stats) {
             this.applyStats(stats);
-            if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
         }
         return true;
     }
@@ -213,13 +239,16 @@ class RewarderService {
         this.saveCurrentStats();
         const num = this.profiles.length + 1;
         const profile: RewardProfile = {
-            id:            generateProfileId(),
-            name:          "Profile " + num,
-            nodes:         defaultRewardNodes(),
-            pityEnabled:   true,
-            pityThreshold: 90,
-            pityTargetId:  null,
-            nextId:        1,
+            id:               generateProfileId(),
+            name:             "Profile " + num,
+            nodes:            defaultRewardNodes(),
+            pityEnabled:      true,
+            pityThreshold:    90,
+            pityTargetId:     null,
+            nextId:           1,
+            stdPityEnabled:   false,
+            stdPityThreshold: 10,
+            stdPityEntries:   [],
         };
         this.profiles.push(profile);
         storageSaveProfiles(this.profiles);
@@ -280,13 +309,16 @@ class RewarderService {
 
         if (profiles.length === 0) {
             const firstProfile: RewardProfile = {
-                id: generateProfileId(),
-                name: "Default",
-                nodes: defaultRewardNodes(),
-                pityEnabled: true,
-                pityThreshold: 90,
-                pityTargetId: null,
-                nextId: 1,
+                id:               generateProfileId(),
+                name:             "Default",
+                nodes:            defaultRewardNodes(),
+                pityEnabled:      true,
+                pityThreshold:    90,
+                pityTargetId:     null,
+                nextId:           1,
+                stdPityEnabled:   false,
+                stdPityThreshold: 10,
+                stdPityEntries:   [],
             };
             profiles = [firstProfile];
             storageSaveProfiles(profiles);
@@ -305,16 +337,20 @@ class RewarderService {
         const stats = storageLoadStats(active.id);
         if (stats) {
             this.applyStats(stats);
-            if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
         }
     }
 
     private applyProfile(profile: RewardProfile): void {
-        this.rewardNodes   = profile.nodes;
-        this.pityEnabled   = profile.pityEnabled;
-        this.pityThreshold = profile.pityThreshold;
-        this.pityTargetId  = profile.pityTargetId;
-        this.nextId        = profile.nextId;
+        this.rewardNodes      = profile.nodes;
+        this.pityEnabled      = profile.pityEnabled;
+        this.pityThreshold    = profile.pityThreshold;
+        this.pityTargetId     = profile.pityTargetId;
+        this.nextId           = profile.nextId;
+        this.stdPityEnabled   = profile.stdPityEnabled   ?? false;
+        this.stdPityThreshold = profile.stdPityThreshold ?? 10;
+        this.stdPityEntries   = profile.stdPityEntries   ?? [];
     }
 
     private applyStats(stats: PersistedStats): void {

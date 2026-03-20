@@ -97,6 +97,7 @@ class RewarderApp {
         }
 
         this.bindRewardListEvents();
+        this.bindStdPityEvents();
 
         // Tab navigation
         const tabBar = document.getElementById("tab-bar");
@@ -126,7 +127,6 @@ class RewarderApp {
             if (target.classList.contains("reward-rate-input")) {
                 const raw = parseFloat((target as HTMLInputElement).value);
                 node.rate = isNaN(raw) ? 0 : Math.max(0, raw);
-                (target as HTMLInputElement).value = String(node.rate);
                 this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
                 this.updateWheelSegments();
@@ -158,6 +158,15 @@ class RewarderApp {
                 this.svc.rebuildPipeline();
                 this.updateWheelSegments();
                 this.renderPityTargetPicker();
+                this.renderStdPityPoolEditor();
+            } else if (target.classList.contains("reward-rate-input")) {
+                const raw = parseFloat((target as HTMLInputElement).value);
+                node.rate = isNaN(raw) ? 0 : Math.max(0, raw);
+                (target as HTMLInputElement).value = String(node.rate);
+                this.updateEffectiveRatesInPlace();
+                this.updateRateSummary();
+                this.updateWheelSegments();
+                this.svc.rebuildPipeline();
             }
         });
 
@@ -215,6 +224,7 @@ class RewarderApp {
             this.renderLatestResult(reward, rollNum);
             this.renderStats();
             this.renderPityProgress();
+            this.renderStdPityProgress();
         }
 
         this.renderHistory();
@@ -283,6 +293,7 @@ class RewarderApp {
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
+        this.renderStdPityProgress();
         this.renderHistory();
     }
 
@@ -291,7 +302,7 @@ class RewarderApp {
             if (!node.isGroup) continue;
             for (const child of node.children) {
                 const effEl = document.querySelector<HTMLElement>(`.tree-node[data-id="${child.id}"] .eff-rate`);
-                if (effEl) effEl.textContent = `${(node.rate * child.rate / 100).toFixed(2)}%`;
+                if (effEl) effEl.textContent = `${formatRate(node.rate * child.rate / 100)}%`;
             }
         }
     }
@@ -301,6 +312,7 @@ class RewarderApp {
         if (!list) return;
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
+        this.renderStdPityConfig();
         this.updateWheelSegments();
     }
 
@@ -332,7 +344,7 @@ class RewarderApp {
                     <button class="btn-toggle-group" title="Collapse group">&#x25BC;</button>
                     <input type="text" class="reward-name-input" value="${escapeHtml(group.name)}" placeholder="Group name">
                     <div class="reward-rate-group">
-                        <input type="number" class="reward-rate-input" value="${group.rate}" min="0" max="100" step="0.01">
+                        <input type="text" inputmode="decimal" class="reward-rate-input" value="${group.rate}" min="0" max="100" step="any">
                         <span class="rate-unit">%</span>
                     </div>
                     <button class="btn-add-child" title="Add reward to group">+</button>
@@ -340,14 +352,14 @@ class RewarderApp {
                 </div>
                 <div class="group-children">
                     ${childrenHtml}
-                    <div class="group-rate-summary ${childOk ? "rate-ok" : "rate-warn"}">\u03a3 ${childSum.toFixed(2)}% ${childOk ? "\u2713" : "\u26a0"}</div>
+                    <div class="group-rate-summary ${childOk ? "rate-ok" : "rate-warn"}">Σ ${formatRate(childSum)}% ${childOk ? "✓" : "⚠"}</div>
                 </div>
             </div>`;
     }
 
     private renderLeafNode(leaf: RewardNodeConfig, parentId: string | null, canDelete: boolean, groupRate?: number): string {
         const effHtml = groupRate !== undefined
-            ? `<span class="eff-rate">${(groupRate * leaf.rate / 100).toFixed(2)}%</span>`
+            ? `<span class="eff-rate">${formatRate(groupRate * leaf.rate / 100)}%</span>`
             : "";
         return `
             <div class="tree-node tree-leaf" data-id="${leaf.id}"${parentId ? ` data-parent="${parentId}"` : ""}>
@@ -358,7 +370,7 @@ class RewarderApp {
                     </div>
                     <input type="text" class="reward-name-input" value="${escapeHtml(leaf.name)}" placeholder="Name">
                     <div class="reward-rate-group">
-                        <input type="number" class="reward-rate-input" value="${leaf.rate}" min="0" max="100" step="0.01">
+                        <input type="text" inputmode="decimal" class="reward-rate-input" value="${leaf.rate}" min="0" max="100" step="any">
                         <span class="rate-unit">%</span>${effHtml}
                     </div>
                     <button class="btn-delete-reward" title="Remove"${canDelete ? "" : " disabled"}>&#xd7;</button>
@@ -369,7 +381,7 @@ class RewarderApp {
     private updateRateSummary(): void {
         const rootTotal = this.svc.rootTotalRate();
         const totalEl = document.getElementById("total-rate");
-        if (totalEl) totalEl.textContent = rootTotal.toFixed(2);
+        if (totalEl) totalEl.textContent = formatRate(rootTotal);
 
         const rootOk = Math.abs(rootTotal - 100) < 0.001;
         const valid = this.svc.isRateValid();
@@ -382,7 +394,7 @@ class RewarderApp {
             if (!sumEl) continue;
             const childSum = group.children.reduce((s, c) => s + c.rate, 0);
             const ok = group.children.length > 0 && Math.abs(childSum - 100) < 0.001;
-            sumEl.textContent = `\u03a3 ${childSum.toFixed(2)}% ${ok ? "\u2713" : "\u26a0"}`;
+            sumEl.textContent = `\u03a3 ${formatRate(childSum)}% ${ok ? "\u2713" : "\u26a0"}`;
             sumEl.className = `group-rate-summary ${ok ? "rate-ok" : "rate-warn"}`;
         }
 
@@ -523,6 +535,169 @@ class RewarderApp {
             }
         }
         return -1;  // not found
+    }
+
+    // ===== Standard Pity =====
+
+    private bindStdPityEvents(): void {
+        const toggle = document.getElementById("std-pity-toggle") as HTMLInputElement | null;
+        if (toggle) {
+            toggle.addEventListener("change", () => {
+                this.svc.stdPityEnabled = toggle.checked;
+                const display      = this.svc.stdPityEnabled ? "flex"  : "none";
+                const blockDisplay = this.svc.stdPityEnabled ? "block" : "none";
+                const cfgRow  = document.getElementById("std-pity-config-row");
+                const poolRow = document.getElementById("std-pity-pool-row");
+                if (cfgRow)  cfgRow.style.display  = display;
+                if (poolRow) poolRow.style.display = blockDisplay;
+                this.svc.rebuildPipeline();
+                this.renderStdPityProgress();
+            });
+        }
+
+        const threshInput = document.getElementById("std-pity-threshold") as HTMLInputElement | null;
+        if (threshInput) {
+            threshInput.addEventListener("change", () => {
+                this.svc.stdPityThreshold = Math.max(1, parseInt(threshInput.value) || 1);
+                threshInput.value = String(this.svc.stdPityThreshold);
+                this.svc.rebuildPipeline();
+                this.renderStdPityProgress();
+            });
+        }
+
+        const poolEditor = document.getElementById("std-pity-pool-editor");
+        if (poolEditor) {
+            poolEditor.addEventListener("change", (e) => {
+                const target   = e.target as HTMLElement;
+                const entryRow = target.closest<HTMLElement>(".std-pity-entry");
+                if (!entryRow) return;
+                const nodeId = entryRow.dataset.nodeId!;
+                if (target.classList.contains("std-pity-entry-check")) {
+                    const checked = (target as HTMLInputElement).checked;
+                    if (checked) {
+                        const node = this.svc.rewardNodes.find(n => n.id === nodeId);
+                        if (node && !this.svc.stdPityEntries.find(e => e.nodeId === nodeId)) {
+                            this.svc.stdPityEntries.push({ nodeId, rate: node.rate });
+                        }
+                    } else {
+                        this.svc.stdPityEntries = this.svc.stdPityEntries.filter(e => e.nodeId !== nodeId);
+                    }
+                    this.renderStdPityPoolEditor();
+                    this.updateStdPityRateSummary();
+                    this.svc.rebuildPipeline();
+                    this.svc.saveProfileConfig();
+                }
+            });
+
+            poolEditor.addEventListener("input", (e) => {
+                const target = e.target as HTMLElement;
+                if (!target.classList.contains("std-pity-rate-input")) return;
+                const entryRow = target.closest<HTMLElement>(".std-pity-entry");
+                if (!entryRow) return;
+                const nodeId = entryRow.dataset.nodeId!;
+                const raw  = parseFloat((target as HTMLInputElement).value);
+                const rate = isNaN(raw) ? 0 : Math.max(0, raw);
+                const entry = this.svc.stdPityEntries.find(e => e.nodeId === nodeId);
+                if (entry) {
+                    entry.rate = rate;
+                    this.updateStdPityRateSummary();
+                    this.svc.rebuildPipeline();
+                    this.svc.saveProfileConfig();
+                }
+            });
+
+            poolEditor.addEventListener("change", (e2) => {
+                const target = e2.target as HTMLElement;
+                if (!target.classList.contains("std-pity-rate-input")) return;
+                const entryRow = target.closest<HTMLElement>(".std-pity-entry");
+                if (!entryRow) return;
+                const nodeId = entryRow.dataset.nodeId!;
+                const raw  = parseFloat((target as HTMLInputElement).value);
+                const rate = isNaN(raw) ? 0 : Math.max(0, raw);
+                (target as HTMLInputElement).value = String(rate);
+                const entry = this.svc.stdPityEntries.find(e => e.nodeId === nodeId);
+                if (entry) {
+                    entry.rate = rate;
+                    this.updateStdPityRateSummary();
+                    this.svc.rebuildPipeline();
+                    this.svc.saveProfileConfig();
+                }
+            });
+        }
+    }
+
+    private renderStdPityConfig(): void {
+        const toggle = document.getElementById("std-pity-toggle") as HTMLInputElement | null;
+        if (toggle) toggle.checked = this.svc.stdPityEnabled;
+
+        const threshInput = document.getElementById("std-pity-threshold") as HTMLInputElement | null;
+        if (threshInput) threshInput.value = String(this.svc.stdPityThreshold);
+
+        const display      = this.svc.stdPityEnabled ? "flex"  : "none";
+        const blockDisplay = this.svc.stdPityEnabled ? "block" : "none";
+        const cfgRow  = document.getElementById("std-pity-config-row");
+        const poolRow = document.getElementById("std-pity-pool-row");
+        if (cfgRow)  cfgRow.style.display  = display;
+        if (poolRow) poolRow.style.display = blockDisplay;
+
+        this.renderStdPityPoolEditor();
+        this.updateStdPityRateSummary();
+    }
+
+    private renderStdPityPoolEditor(): void {
+        const container = document.getElementById("std-pity-pool-editor");
+        if (!container) return;
+        container.innerHTML = this.svc.rewardNodes.map(node => {
+            const entry   = this.svc.stdPityEntries.find(e => e.nodeId === node.id);
+            const checked = entry !== undefined;
+            const rate    = entry?.rate ?? node.rate;
+            const label   = node.isGroup
+                ? `&#x25B6; ${escapeHtml(node.name)}`
+                : escapeHtml(node.name);
+            return `
+                <div class="std-pity-entry" data-node-id="${node.id}">
+                    <input type="checkbox" class="std-pity-entry-check"${checked ? " checked" : ""}>
+                    <span class="std-pity-entry-name">${label}</span>
+                    <input type="text" inputmode="decimal" class="std-pity-rate-input" value="${rate}" min="0" max="100" step="any"${checked ? "" : " disabled"}>
+                    <span class="rate-unit">%</span>
+                </div>`;
+        }).join("");
+    }
+
+    private updateStdPityRateSummary(): void {
+        const total   = this.svc.stdPityEntries.reduce((s, e) => s + e.rate, 0);
+        const totalEl = document.getElementById("std-pity-total-rate");
+        if (totalEl) totalEl.textContent = formatRate(total);
+        const ok      = this.svc.stdPityEntries.length > 0 && Math.abs(total - 100) < 0.001;
+        const warning = document.getElementById("std-pity-rate-warning");
+        if (warning) warning.style.display = (this.svc.stdPityEntries.length > 0 && !ok) ? "inline" : "none";
+    }
+
+    private renderStdPityProgress(): void {
+        const section = document.getElementById("std-pity-section");
+        if (!section) return;
+
+        if (!this.svc.stdPityEnabled || !this.svc.stdPityInterceptor) {
+            section.style.display = "none";
+            return;
+        }
+        section.style.display = "block";
+
+        const counter   = this.svc.stdPityInterceptor.counter;
+        const threshold = this.svc.stdPityThreshold;
+        const pct       = Math.min(100, (counter / threshold) * 100);
+        const urgency   = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+
+        const countEl     = document.getElementById("std-pity-count");
+        const thresholdEl = document.getElementById("std-pity-threshold-display");
+        const barEl       = document.getElementById("std-pity-bar") as HTMLElement | null;
+
+        if (countEl)     countEl.textContent     = String(counter);
+        if (thresholdEl) thresholdEl.textContent = String(threshold);
+        if (barEl) {
+            barEl.style.width           = `${pct}%`;
+            barEl.style.backgroundColor = urgency;
+        }
     }
 }
 

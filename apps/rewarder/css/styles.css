@@ -485,6 +485,60 @@ details[open] > .config-group-header .config-group-chevron {
 .pity-target-select:focus { outline: none; border-color: var(--accent); }
 .pity-target-select option { background: var(--surface); }
 
+/* ===== Standard Pity Pool Editor ===== */
+.std-pity-pool-wrap {
+    margin-top: 0.7em;
+}
+.std-pity-pool-header {
+    font-size: 0.72em;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.45em;
+}
+.std-pity-pool-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+    margin-bottom: 0.5em;
+}
+.std-pity-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    font-size: 0.82em;
+}
+.std-pity-entry-check {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+}
+.std-pity-entry-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+}
+.std-pity-rate-input {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.88em;
+    padding: 0.2em 0.35em;
+    width: 52px;
+    text-align: right;
+}
+.std-pity-rate-input:disabled { opacity: 0.3; }
+.std-pity-rate-input:not(:disabled):focus { outline: none; border-color: var(--accent); }
+.std-pity-rate-summary { margin-top: 0; }
+
 /* ===== Profile Picker ===== */
 .profile-section {
     padding-bottom: 0.8em;
