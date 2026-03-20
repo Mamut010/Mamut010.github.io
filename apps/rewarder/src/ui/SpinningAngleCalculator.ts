@@ -19,12 +19,22 @@ interface SpinLandingResult {
     correctionDelta?: number;
 }
 
+/** Full wheel geometry and target index passed to every calculator. */
+interface SpinCalculationContext {
+    /** Index of the segment the wheel should land on. */
+    targetIndex: number;
+    /** All wheel segments (model data — weights, colors, labels, …). */
+    segments:    WheelSegment[];
+    /** Pre-computed angular geometry for every segment. */
+    segAngles:   SegmentAngles[];
+}
+
 interface ISpinningAngleCalculator {
     /**
      * Determine the precise landing position for this spin.
-     * @param segAngles Geometry of the target segment from `computeAngles()`.
+     * @param context Full wheel geometry and the index of the winning segment.
      */
-    calculate(segAngles: SegmentAngles): SpinLandingResult;
+    calculate(context: SpinCalculationContext): SpinLandingResult;
 }
 
 interface ISpinningAngleCalculatorFactory {
@@ -36,7 +46,8 @@ interface ISpinningAngleCalculatorFactory {
 
 /** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
 class NaturalAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
+    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
+        const { start, sweep } = segAngles[targetIndex];
         const margin       = sweep * 0.10;
         const TAU          = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
@@ -45,17 +56,25 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
 }
 
 /**
- * Lands past the target, then eases back.
- * The wheel appears to overshoot by a small amount then settle.
+ * The wheel spins slightly past the reward section, then eases back in.
+ *
+ * More rotation → lower wheel-space angle under pointer, so the peak
+ * pointer position is landingAngle − correctionDelta.  We intentionally
+ * make that cross the trailing edge (start) by a small gap so the pointer
+ * briefly visits the neighbouring segment before returning.
  */
 class OvershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
-        // Stay 15% from each edge so the overshoot lands within the same segment.
-        const margin         = sweep * 0.15;
-        const TAU            = 2 * Math.PI;
-        const landingAngle   = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta > 0: forward overshoot, 8–16% of sweep, clamped to [0.04, 0.15] rad.
-        const correctionDelta = Math.min(0.15, Math.max(0.04, sweep * (0.08 + Math.random() * 0.08)));
+    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
+        const { start, sweep } = segAngles[targetIndex];
+        const TAU = 2 * Math.PI;
+        // Landing sits close to the trailing edge (start) so the correction
+        // needed to cross it is as small as possible.
+        // Cap distInside so large segments don't push correctionDelta too high.
+        const distInside     = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle   = start + distInside;
+        // How far past the trailing edge the pointer should briefly appear.
+        const extraGap       = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = distInside + extraGap;   // always crosses start
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
@@ -64,18 +83,22 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
 }
 
 /**
- * Stops just short of the target, then nudges forward.
- * The wheel appears to lose momentum right before the target, then creep in.
+ * The wheel stops just before the reward section, then creeps in.
+ *
+ * correctionDelta is negative, so the peak pointer position is
+ * landingAngle + |correctionDelta|, which crosses the leading edge
+ * (start + sweep) so the pointer briefly sits in the preceding segment.
  */
 class UndershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
-        // Keep 20% margin from each edge so the undershoot pause stays inside the segment.
-        const margin         = sweep * 0.20;
-        const TAU            = 2 * Math.PI;
-        const landingAngle   = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta < 0: the animation stops this far before landingAngle, then creeps forward.
-        // Clamped to [-0.12, -0.03] rad so large segments don't produce a fast end-of-animation snap.
-        const correctionDelta = -Math.min(0.12, Math.max(0.03, sweep * (0.06 + Math.random() * 0.07)));
+    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
+        const { start, sweep } = segAngles[targetIndex];
+        const TAU = 2 * Math.PI;
+        // Landing sits close to the leading edge (start + sweep).
+        const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle    = start + sweep - distFromLeading;
+        // How far past the leading edge the pointer should briefly appear.
+        const extraGap        = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = -(distFromLeading + extraGap);  // always crosses start+sweep
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,

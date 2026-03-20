@@ -41,7 +41,7 @@ class SpinningWheel {
     }
 
     spin(targetIndex: number, context: SpinContext): Promise<void> {
-        return this.spinner.spin(targetIndex, context, this.segAngles, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
     }
 
     accelerate(): void { this.spinner.accelerate(); }

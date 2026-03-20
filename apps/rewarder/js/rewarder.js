@@ -681,7 +681,8 @@ class WheelSpinModeFactory {
 // ── Concrete calculators ──────────────────────────────────────────────────────
 /** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
 class NaturalAngleCalculator {
-    calculate({ start, sweep }) {
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
         const margin = sweep * 0.10;
         const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
@@ -689,17 +690,25 @@ class NaturalAngleCalculator {
     }
 }
 /**
- * Lands past the target, then eases back.
- * The wheel appears to overshoot by a small amount then settle.
+ * The wheel spins slightly past the reward section, then eases back in.
+ *
+ * More rotation → lower wheel-space angle under pointer, so the peak
+ * pointer position is landingAngle − correctionDelta.  We intentionally
+ * make that cross the trailing edge (start) by a small gap so the pointer
+ * briefly visits the neighbouring segment before returning.
  */
 class OvershootAngleCalculator {
-    calculate({ start, sweep }) {
-        // Stay 15% from each edge so the overshoot lands within the same segment.
-        const margin = sweep * 0.15;
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
         const TAU = 2 * Math.PI;
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta > 0: forward overshoot, 8–16% of sweep, clamped to [0.04, 0.15] rad.
-        const correctionDelta = Math.min(0.15, Math.max(0.04, sweep * (0.08 + Math.random() * 0.08)));
+        // Landing sits close to the trailing edge (start) so the correction
+        // needed to cross it is as small as possible.
+        // Cap distInside so large segments don't push correctionDelta too high.
+        const distInside = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = start + distInside;
+        // How far past the trailing edge the pointer should briefly appear.
+        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = distInside + extraGap; // always crosses start
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
@@ -707,18 +716,22 @@ class OvershootAngleCalculator {
     }
 }
 /**
- * Stops just short of the target, then nudges forward.
- * The wheel appears to lose momentum right before the target, then creep in.
+ * The wheel stops just before the reward section, then creeps in.
+ *
+ * correctionDelta is negative, so the peak pointer position is
+ * landingAngle + |correctionDelta|, which crosses the leading edge
+ * (start + sweep) so the pointer briefly sits in the preceding segment.
  */
 class UndershootAngleCalculator {
-    calculate({ start, sweep }) {
-        // Keep 20% margin from each edge so the undershoot pause stays inside the segment.
-        const margin = sweep * 0.20;
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
         const TAU = 2 * Math.PI;
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta < 0: the animation stops this far before landingAngle, then creeps forward.
-        // Clamped to [-0.12, -0.03] rad so large segments don't produce a fast end-of-animation snap.
-        const correctionDelta = -Math.min(0.12, Math.max(0.03, sweep * (0.06 + Math.random() * 0.07)));
+        // Landing sits close to the leading edge (start + sweep).
+        const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = start + sweep - distFromLeading;
+        // How far past the leading edge the pointer should briefly appear.
+        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = -(distFromLeading + extraGap); // always crosses start+sweep
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
@@ -760,11 +773,10 @@ class DefaultWheelSpinner {
         this.animator = animator;
         this.calculatorFactory = calculatorFactory;
     }
-    spin(targetIndex, context, segAngles, onFrame) {
+    spin(targetIndex, context, segments, segAngles, onFrame) {
         const TAU = 2 * Math.PI;
-        const angles = segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
         const calculator = this.calculatorFactory.create(context);
-        const landing = calculator.calculate(angles);
+        const landing = calculator.calculate({ targetIndex, segments, segAngles });
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
         const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
@@ -790,7 +802,7 @@ class DefaultWheelSpinner {
 DefaultWheelSpinner.NORMAL_DURATION = 4000; // ms for a full normal spin
 DefaultWheelSpinner.ACCEL_CAP_MS = 900; // max remaining ms after accelerate()
 DefaultWheelSpinner.MIN_SPINS = 6; // minimum full rotations before stopping
-DefaultWheelSpinner.PHASE1_FRAC = 0.92; // fraction of total duration for main spin
+DefaultWheelSpinner.PHASE1_FRAC = 0.85; // t-fraction at which the correction blend begins (wider window → slower, more readable settle)
 // ===== Spinning Wheel (Orchestrator) =====
 /**
  * Orchestrates the drawer, animator, and spinner to present a complete
@@ -819,7 +831,7 @@ class SpinningWheel {
         return idx >= 0 ? idx : 0;
     }
     spin(targetIndex, context) {
-        return this.spinner.spin(targetIndex, context, this.segAngles, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
     }
     accelerate() { this.spinner.accelerate(); }
     skip() { this.spinner.skip(); }

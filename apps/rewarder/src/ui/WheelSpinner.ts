@@ -9,6 +9,7 @@ interface IWheelSpinner {
     spin(
         targetIndex: number,
         context:     SpinContext,
+        segments:    WheelSegment[],
         segAngles:   SegmentAngles[],
         onFrame:     () => void,
     ): Promise<void>;
@@ -21,7 +22,7 @@ class DefaultWheelSpinner implements IWheelSpinner {
     private static readonly NORMAL_DURATION = 4000;   // ms for a full normal spin
     private static readonly ACCEL_CAP_MS   = 900;     // max remaining ms after accelerate()
     private static readonly MIN_SPINS      = 6;       // minimum full rotations before stopping
-    private static readonly PHASE1_FRAC    = 0.92;    // fraction of total duration for main spin
+    private static readonly PHASE1_FRAC    = 0.85;    // t-fraction at which the correction blend begins (wider window → slower, more readable settle)
 
     constructor(
         private readonly animator:          ISpinningWheelAnimator,
@@ -31,13 +32,13 @@ class DefaultWheelSpinner implements IWheelSpinner {
     spin(
         targetIndex: number,
         context:     SpinContext,
+        segments:    WheelSegment[],
         segAngles:   SegmentAngles[],
         onFrame:     () => void,
     ): Promise<void> {
         const TAU        = 2 * Math.PI;
-        const angles     = segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
         const calculator = this.calculatorFactory.create(context);
-        const landing    = calculator.calculate(angles);
+        const landing    = calculator.calculate({ targetIndex, segments, segAngles });
 
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
