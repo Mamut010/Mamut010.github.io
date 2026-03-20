@@ -2,7 +2,7 @@
 
 /** Context passed from the active spin mode into the calculator factory. */
 interface SpinContext {
-    modeId: IWheelSpinStrategy["id"];
+    modeId: WheelSpinStrategyCode;
 }
 
 /**
