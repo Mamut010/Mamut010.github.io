@@ -54,8 +54,8 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
         const margin         = sweep * 0.15;
         const TAU            = 2 * Math.PI;
         const landingAngle   = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta > 0: forward overshoot, 8–16% of sweep, minimum 0.04 rad.
-        const correctionDelta = Math.max(0.04, sweep * (0.08 + Math.random() * 0.08));
+        // correctionDelta > 0: forward overshoot, 8–16% of sweep, clamped to [0.04, 0.15] rad.
+        const correctionDelta = Math.min(0.15, Math.max(0.04, sweep * (0.08 + Math.random() * 0.08)));
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
@@ -74,7 +74,8 @@ class UndershootAngleCalculator implements ISpinningAngleCalculator {
         const TAU            = 2 * Math.PI;
         const landingAngle   = start + margin + Math.random() * (sweep - 2 * margin);
         // correctionDelta < 0: the animation stops this far before landingAngle, then creeps forward.
-        const correctionDelta = -Math.max(0.03, sweep * (0.06 + Math.random() * 0.07));
+        // Clamped to [-0.12, -0.03] rad so large segments don't produce a fast end-of-animation snap.
+        const correctionDelta = -Math.min(0.12, Math.max(0.03, sweep * (0.06 + Math.random() * 0.07)));
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,

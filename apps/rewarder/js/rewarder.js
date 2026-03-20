@@ -488,22 +488,33 @@ class CanvasWheelDrawer {
 }
 // ===== Wheel Spin Animator =====
 /**
- * Two-phase easing animator:
- *   Phase 1 — ease-out-quart forward spin (toward corrected position or final).
- *   Phase 2 — ease-in-quad settle (eases back from overshoot or forward from undershoot).
+ * Unified single-pass animator.
+ *
+ * When a correctionDelta is present (overshoot / undershoot), the position is
+ * computed as a blend of two curves that run simultaneously over the full
+ * duration — giving one continuous, smooth deceleration with the
+ * overshoot/undershoot baked in near the end rather than as a separate bounce:
+ *
+ *   basePos(t)    = lerp(from, overshootTarget, easeOutQuart(t))
+ *   blendWeight(t) = smoothstep(phase1Frac → 1)          // 0 before tail, 1 at end
+ *   position(t)   = lerp(basePos(t), finalRotation, blendWeight(t))
+ *
+ * The overshootTarget = finalRotation + correctionDelta, so the base curve
+ * naturally drifts past (or short of) the target.  The blend weight then
+ * smoothly pulls the wheel back to exactly finalRotation by t = 1.
+ * Because both curves are active at all times the motion is fully continuous
+ * with no abrupt velocity change between "phases".
  */
 class TwoPhaseWheelAnimator {
     constructor() {
         this.currentRotation = 0;
         this.spinFromRotation = 0;
         this.finalRotation = 0;
-        this.overshootRotation = null;
-        this.phase1StartTime = 0;
-        this.phase1Duration = 0;
-        this.phase2StartTime = 0;
-        this.phase2Duration = 0;
+        this.overshootTarget = null;
+        this.startTime = 0;
+        this.totalDuration = 0;
+        this.blendStart = 0; // t-fraction where correction blend begins
         this.accelCapMs = 0;
-        this.inPhase2 = false;
         this.rafId = null;
         this.resolveSpinPromise = null;
         this.onFrame = null;
@@ -521,21 +532,19 @@ class TwoPhaseWheelAnimator {
         oldResolve?.();
         this.onFrame = onFrame;
         this.accelCapMs = params.accelCapMs;
-        this.inPhase2 = false;
         this.spinFromRotation = params.fromRotation;
         this.currentRotation = params.fromRotation;
         this.finalRotation = params.finalRotation;
+        this.totalDuration = params.normalDuration;
         if (params.correctionDelta != null && params.correctionDelta !== 0) {
-            this.overshootRotation = params.finalRotation + params.correctionDelta;
-            this.phase1Duration = params.normalDuration * params.phase1Frac;
-            this.phase2Duration = params.normalDuration * (1 - params.phase1Frac);
+            this.overshootTarget = params.finalRotation + params.correctionDelta;
+            this.blendStart = params.phase1Frac;
         }
         else {
-            this.overshootRotation = null;
-            this.phase1Duration = params.normalDuration;
-            this.phase2Duration = 0;
+            this.overshootTarget = null;
+            this.blendStart = 1;
         }
-        this.phase1StartTime = performance.now();
+        this.startTime = performance.now();
         return new Promise(resolve => {
             this.resolveSpinPromise = resolve;
             this.scheduleFrame();
@@ -544,24 +553,15 @@ class TwoPhaseWheelAnimator {
     accelerate() {
         if (this.rafId === null)
             return;
-        // If already in settle phase, just snap to final.
-        if (this.inPhase2) {
-            this.finishSpin();
+        const elapsed = performance.now() - this.startTime;
+        if (elapsed >= this.totalDuration)
             return;
-        }
-        const elapsed = performance.now() - this.phase1StartTime;
-        if (elapsed >= this.phase1Duration)
-            return;
-        // Rebase from current visual position, dropping correction phase.
-        const phase1Target = this.overshootRotation ?? this.finalRotation;
-        const t = Math.min(elapsed / this.phase1Duration, 1);
-        const curPos = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
-        this.overshootRotation = null;
-        this.phase2Duration = 0;
-        this.spinFromRotation = curPos;
-        this.currentRotation = curPos;
-        this.phase1StartTime = performance.now();
-        this.phase1Duration = this.accelCapMs;
+        // Rebase from current visual position, dropping correction.
+        this.overshootTarget = null;
+        this.blendStart = 1;
+        this.spinFromRotation = this.currentRotation;
+        this.startTime = performance.now();
+        this.totalDuration = this.accelCapMs;
     }
     skip() {
         if (this.rafId === null)
@@ -575,46 +575,36 @@ class TwoPhaseWheelAnimator {
         this.rafId = requestAnimationFrame(() => this.frame());
     }
     frame() {
-        const now = performance.now();
-        if (!this.inPhase2) {
-            // Phase 1: ease-out-quart toward phase1Target.
-            const phase1Target = this.overshootRotation ?? this.finalRotation;
-            const elapsed = now - this.phase1StartTime;
-            if (elapsed >= this.phase1Duration) {
-                this.currentRotation = phase1Target;
-                this.onFrame?.();
-                if (this.overshootRotation != null) {
-                    // Transition to phase 2.
-                    this.inPhase2 = true;
-                    this.spinFromRotation = phase1Target;
-                    this.phase2StartTime = now;
-                    this.scheduleFrame();
-                }
-                else {
-                    this.finishSpin();
-                }
-                return;
-            }
-            const t = elapsed / this.phase1Duration;
-            this.currentRotation = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
+        const elapsed = performance.now() - this.startTime;
+        if (elapsed >= this.totalDuration) {
+            this.finishSpin();
+            return;
         }
-        else {
-            // Phase 2: ease-in-quad settle to finalRotation.
-            const elapsed = now - this.phase2StartTime;
-            if (elapsed >= this.phase2Duration) {
-                this.finishSpin();
-                return;
-            }
-            const t = elapsed / this.phase2Duration;
-            this.currentRotation = this.spinFromRotation + this.easeInQuad(t) * (this.finalRotation - this.spinFromRotation);
-        }
+        const t = elapsed / this.totalDuration;
+        this.currentRotation = this.computePosition(t);
         this.onFrame?.();
         this.scheduleFrame();
     }
+    /**
+     * Single unified position function.
+     * - Without correction: pure ease-out-quart from `spinFromRotation` to `finalRotation`.
+     * - With correction: ease-out-quart aims at `overshootTarget` while a smoothstep
+     *   blend (active only in the tail window [blendStart, 1]) gradually steers the
+     *   position back to `finalRotation`.  All in one continuous pass.
+     */
+    computePosition(t) {
+        const baseTarget = this.overshootTarget ?? this.finalRotation;
+        const basePos = this.spinFromRotation + this.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        if (this.overshootTarget == null)
+            return basePos;
+        // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
+        const blend = this.smoothstepTail(t, this.blendStart);
+        // Lerp between base (which drifts past/short of final) and exact final.
+        return basePos + blend * (this.finalRotation - basePos);
+    }
     finishSpin() {
         this.currentRotation = this.finalRotation;
-        this.inPhase2 = false;
-        this.overshootRotation = null;
+        this.overshootTarget = null;
         this.rafId = null;
         this.onFrame?.();
         this.onFrame = null;
@@ -622,12 +612,19 @@ class TwoPhaseWheelAnimator {
         this.resolveSpinPromise = null;
         resolve?.();
     }
-    // ── Easing functions ──────────────────────────────────────────────────────
+    // ── Easing / math helpers ─────────────────────────────────────────────────
     easeOutQuart(t) {
         return 1 - Math.pow(1 - Math.min(t, 1), 4);
     }
-    easeInQuad(t) {
-        return Math.min(t, 1) ** 2;
+    /**
+     * Smoothstep that maps [start, 1] → [0, 1] and is 0 for t ≤ start.
+     * Used to define the correction blend window.
+     */
+    smoothstepTail(t, start) {
+        if (t <= start)
+            return 0;
+        const u = (t - start) / (1 - start); // remap to [0, 1]
+        return u * u * (3 - 2 * u); // classic smoothstep
     }
 }
 // ===== Wheel Spin Mode (Strategy Pattern) =====
@@ -701,8 +698,8 @@ class OvershootAngleCalculator {
         const margin = sweep * 0.15;
         const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        // correctionDelta > 0: forward overshoot, 8–16% of sweep, minimum 0.04 rad.
-        const correctionDelta = Math.max(0.04, sweep * (0.08 + Math.random() * 0.08));
+        // correctionDelta > 0: forward overshoot, 8–16% of sweep, clamped to [0.04, 0.15] rad.
+        const correctionDelta = Math.min(0.15, Math.max(0.04, sweep * (0.08 + Math.random() * 0.08)));
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
@@ -720,7 +717,8 @@ class UndershootAngleCalculator {
         const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
         // correctionDelta < 0: the animation stops this far before landingAngle, then creeps forward.
-        const correctionDelta = -Math.max(0.03, sweep * (0.06 + Math.random() * 0.07));
+        // Clamped to [-0.12, -0.03] rad so large segments don't produce a fast end-of-animation snap.
+        const correctionDelta = -Math.min(0.12, Math.max(0.03, sweep * (0.06 + Math.random() * 0.07)));
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
             correctionDelta,
