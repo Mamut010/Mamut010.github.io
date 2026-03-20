@@ -1302,6 +1302,7 @@ class RewarderApp {
                 target.value = String(node.rate);
                 this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
+                this.updateWheelSegments();
                 this.svc.rebuildPipeline();
             }
             else if (target.classList.contains("reward-color-input")) {
