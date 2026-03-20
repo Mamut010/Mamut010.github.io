@@ -57,6 +57,13 @@ class Collections {
         return undefined;
     }
 }
+class RewardUtils {
+    constructor() { }
+    static containsResultRecursive(nodes, result) {
+        const leafIds = new Set(collectLeaves(nodes).map(l => l.id));
+        return result.rewards.some(r => leafIds.has(r.id));
+    }
+}
 class MathRandomNumberGenerator {
     seed(value) { }
     next() {
@@ -295,37 +302,52 @@ class RewardTreeFactory {
         return groupNode;
     }
 }
-class HardPityInterceptor {
+// ===== Base Pity Interceptor =====
+// Abstract base class that encapsulates the shared pity-trigger logic:
+//   - roll counter with public getter / setter (for persistence)
+//   - threshold check → force-pity branch
+//   - natural-hit auto-reset
+//
+// Subclasses implement the two template methods:
+//   _isHit()       — decides whether a result counts as a natural pity hit
+//   _buildPityTree() — constructs the reward tree used for the forced pull
+class BasePityInterceptor {
     get counter() { return this._counter; }
     setCounter(value) { this._counter = value; }
-    get targetName() { return this._target.name; }
-    get targetId() { return this._target.id; }
-    constructor(_threshold, _target) {
+    constructor(_threshold) {
         this._threshold = _threshold;
-        this._target = _target;
         this._counter = 0;
     }
     async intercept(ctx, next) {
-        const result = await next(ctx);
-        if (this._isHit(result)) {
+        this._counter++;
+        if (this._counter >= this._threshold) {
             this._counter = 0;
-            return result;
+            return await this._forcePity(ctx, next);
         }
-        if (this._counter + 1 < this._threshold) {
-            this._counter++;
-            return result;
+        const result = await next(ctx);
+        if (this._counter > 0 && this._isHit(result)) {
+            this._counter = 0;
         }
-        this._counter = 0;
-        return this._forcePity(ctx);
+        return result;
+    }
+    async _forcePity(ctx, next) {
+        ctx.tree = await this._buildPityTree(ctx);
+        return await next(ctx);
+    }
+}
+class HardPityInterceptor extends BasePityInterceptor {
+    get targetName() { return this._target.name; }
+    get targetId() { return this._target.id; }
+    constructor(threshold, _target) {
+        super(threshold);
+        this._target = _target;
     }
     _isHit(result) {
-        const leafIds = new Set(collectLeaves([this._target]).map(l => l.id));
-        return result.rewards.some(r => leafIds.has(r.id));
+        return RewardUtils.containsResultRecursive([this._target], result);
     }
-    async _forcePity(ctx) {
+    async _buildPityTree(ctx) {
         const pityConfig = { ...this._target, rate: 100 };
-        const pityTree = await new RewardTreeFactory([pityConfig]).create(ctx.exec);
-        return ctx.resolver.resolve(pityTree, ctx.exec);
+        return await new RewardTreeFactory([pityConfig]).create(ctx.exec);
     }
 }
 // ===== Standard Pity Interceptor =====
@@ -341,32 +363,17 @@ class HardPityInterceptor {
  * tree override is visible to downstream interceptors (HardPityInterceptor will
  * then evaluate its hit-check against the pity-pool result).
  */
-class StandardPityInterceptor {
-    get counter() { return this._counter; }
-    setCounter(value) { this._counter = value; }
-    constructor(_threshold, _pityNodes) {
-        this._threshold = _threshold;
+class StandardPityInterceptor extends BasePityInterceptor {
+    constructor(threshold, _pityNodes) {
+        super(threshold);
         this._pityNodes = _pityNodes;
-        this._counter = 0;
     }
-    async intercept(ctx, next) {
-        this._counter++;
-        if (this._counter >= this._threshold) {
-            this._counter = 0;
-            // Override the tree in-place; downstream interceptors (e.g. HardPity) see it.
-            const pityTree = await new RewardTreeFactory(this._pityNodes).create(ctx.exec);
-            ctx.tree = pityTree;
-        }
-        const result = await next(ctx);
-        // If a reward from the pity pool was obtained naturally, reset the counter.
-        if (this._counter > 0 && this._isHit(result)) {
-            this._counter = 0;
-        }
-        return result;
-    }
+    // If a reward from the pity pool was obtained naturally, reset the counter.
     _isHit(result) {
-        const leafIds = new Set(collectLeaves(this._pityNodes).map(l => l.id));
-        return result.rewards.some(r => leafIds.has(r.id));
+        return RewardUtils.containsResultRecursive(this._pityNodes, result);
+    }
+    async _buildPityTree(ctx) {
+        return await new RewardTreeFactory(this._pityNodes).create(ctx.exec);
     }
 }
 function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes) {
