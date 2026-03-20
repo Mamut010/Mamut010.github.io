@@ -1,22 +1,20 @@
 type PipelineBuildingParams = {
-    nodes:                     readonly RewardNodeConfig[],
-    pityEnabled:               boolean,
-    pityThreshold:             number,
-    pityTargetConfig:          RewardNodeConfig | null,
-    stdPityEnabled:            boolean,
-    stdPityThreshold:          number,
-    stdPityNodes:              readonly RewardNodeConfig[],
-    featuredPityEnabled:       boolean,
-    featuredPityThreshold:     number,
-    featuredPityGroupConfig:   RewardNodeConfig | null,
-    featuredPityFeaturedConfig: RewardNodeConfig | null,
+    nodes:                 readonly RewardNodeConfig[],
+    pityEnabled:           boolean,
+    pityThreshold:         number,
+    pityTargetConfig:      RewardNodeConfig | null,
+    stdPityEnabled:        boolean,
+    stdPityThreshold:      number,
+    stdPityNodes:          readonly RewardNodeConfig[],
+    featuredPityEnabled:   boolean,
+    featuredConfigs:       readonly FeaturedPityConfig[],
 };
 
 type PipelineBuildingResult = {
-    pipeline:                RewardPipeline<Reward>;
-    pityInterceptor:         HardPityInterceptor     | null;
-    stdPityInterceptor:      StandardPityInterceptor  | null;
-    featuredPityInterceptor: FeaturedPityInterceptor  | null;
+    pipeline:                 RewardPipeline<Reward>;
+    pityInterceptor:          HardPityInterceptor     | null;
+    stdPityInterceptor:       StandardPityInterceptor  | null;
+    featuredPityInterceptors: FeaturedPityInterceptor[];
 };
 
 function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
@@ -29,9 +27,7 @@ function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
         stdPityThreshold,
         stdPityNodes,
         featuredPityEnabled,
-        featuredPityThreshold,
-        featuredPityGroupConfig,
-        featuredPityFeaturedConfig,
+        featuredConfigs,
     } = params;
 
     const treeFactory = new RewardTreeFactory(nodes);
@@ -40,16 +36,16 @@ function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
     const resolver    = new RewardResolver<Reward>(walker, collector);
     const pipeline    = new RewardPipeline(treeFactory, resolver);
 
-    let pityInterceptor:         HardPityInterceptor     | null = null;
-    let stdPityInterceptor:      StandardPityInterceptor  | null = null;
-    let featuredPityInterceptor: FeaturedPityInterceptor  | null = null;
+    let pityInterceptor:    HardPityInterceptor    | null = null;
+    let stdPityInterceptor: StandardPityInterceptor | null = null;
+    const featuredPityInterceptors: FeaturedPityInterceptor[] = [];
 
-    if (featuredPityEnabled && featuredPityGroupConfig !== null && featuredPityFeaturedConfig !== null) {
-        featuredPityInterceptor = new FeaturedPityInterceptor(
-            featuredPityThreshold,
-            featuredPityGroupConfig,
-            featuredPityFeaturedConfig,
-        );
+    if (featuredPityEnabled) {
+        for (const cfg of featuredConfigs) {
+            featuredPityInterceptors.push(
+                new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured),
+            );
+        }
     }
 
     if (stdPityEnabled && stdPityNodes.length > 0) {
@@ -66,13 +62,14 @@ function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
         }
     }
 
-    // Featured first (patches group children), then Standard (may override the whole tree),
-    // then Hard (forces a specific node within whatever tree is active).
-    const interceptors: IRewardInterceptor<Reward>[] = [];
-    if (featuredPityInterceptor) interceptors.push(featuredPityInterceptor);
-    if (stdPityInterceptor)      interceptors.push(stdPityInterceptor);
-    if (pityInterceptor)         interceptors.push(pityInterceptor);
+    // Featured outermost (outgoing priority — final say over result),
+    // then Standard (may override tree), then Hard (forces specific node).
+    const interceptors: IRewardInterceptor<Reward>[] = [
+        ...featuredPityInterceptors,
+        ...(stdPityInterceptor ? [stdPityInterceptor] : []),
+        ...(pityInterceptor    ? [pityInterceptor]    : []),
+    ];
     pipeline.setInterceptors(interceptors);
 
-    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor };
+    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
 }

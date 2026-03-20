@@ -37,6 +37,7 @@
         "src/core/impl/RewardResolver.ts",
         "src/core/impl/RewardPipeline.ts",
         "src/models/RewardItemConfig.ts",
+        "src/models/FeaturedPityConfig.ts",
         "src/models/Reward.ts",
         "src/services/RewardTreeFactory.ts",
         "src/services/PipelineFactory.ts",

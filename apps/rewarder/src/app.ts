@@ -714,117 +714,186 @@ class RewarderApp {
         if (toggle) {
             toggle.addEventListener("change", () => {
                 this.svc.featuredPityEnabled = toggle.checked;
-                const display = this.svc.featuredPityEnabled ? "flex" : "none";
-                ["feat-pity-config-row", "feat-pity-group-row", "feat-pity-featured-row"].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.style.display = display;
-                });
+                const display = this.svc.featuredPityEnabled ? "block" : "none";
+                const addRow  = document.getElementById("feat-pity-add-row");
+                const editor  = document.getElementById("feat-pity-entries-editor");
+                if (editor) editor.style.display = display;
+                if (addRow) addRow.style.display  = display;
                 this.svc.rebuildPipeline();
                 this.renderFeaturedPityProgress();
             });
         }
 
-        const threshInput = document.getElementById("feat-pity-threshold") as HTMLInputElement | null;
-        if (threshInput) {
-            threshInput.addEventListener("change", () => {
-                this.svc.featuredPityThreshold = Math.max(1, parseInt(threshInput.value) || 1);
-                threshInput.value = String(this.svc.featuredPityThreshold);
+        const addBtn = document.getElementById("btn-add-feat-pity");
+        if (addBtn) {
+            addBtn.addEventListener("click", () => {
+                this.svc.addFeaturedPityEntry();
+                this.renderFeaturedPityEntries();
                 this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
                 this.renderFeaturedPityProgress();
             });
         }
 
-        const groupSel = document.getElementById("feat-pity-group") as HTMLSelectElement | null;
-        if (groupSel) {
-            groupSel.addEventListener("change", () => {
-                this.svc.featuredPityGroupId    = groupSel.value || null;
-                this.svc.featuredPityFeaturedId = null;
+        const editor = document.getElementById("feat-pity-entries-editor");
+        if (editor) {
+            editor.addEventListener("click", (e) => {
+                const btn = (e.target as HTMLElement).closest(".btn-remove-feat-pity-entry");
+                if (!btn) return;
+                const row = (btn as HTMLElement).closest<HTMLElement>(".feat-pity-entry");
+                if (!row) return;
+                this.svc.removeFeaturedPityEntry(row.dataset.entryId!);
+                this.renderFeaturedPityEntries();
                 this.svc.rebuildPipeline();
-                this.renderFeaturedPityFeaturedPicker();
+                this.svc.saveProfileConfig();
                 this.renderFeaturedPityProgress();
             });
-        }
 
-        const featuredSel = document.getElementById("feat-pity-featured") as HTMLSelectElement | null;
-        if (featuredSel) {
-            featuredSel.addEventListener("change", () => {
-                this.svc.featuredPityFeaturedId = featuredSel.value || null;
+            editor.addEventListener("change", (e) => {
+                const target = e.target as HTMLElement;
+                const row = target.closest<HTMLElement>(".feat-pity-entry");
+                if (!row) return;
+                const entry = this.svc.featuredPityEntries.find(en => en.id === row.dataset.entryId);
+                if (!entry) return;
+
+                if (target.classList.contains("feat-pity-threshold-input")) {
+                    entry.threshold = Math.max(1, parseInt((target as HTMLInputElement).value) || 1);
+                    (target as HTMLInputElement).value = String(entry.threshold);
+                } else if (target.classList.contains("feat-pity-group-sel")) {
+                    entry.groupId    = (target as HTMLSelectElement).value || null;
+                    entry.featuredId = null;
+                    const featSel = row.querySelector<HTMLSelectElement>(".feat-pity-featured-sel");
+                    if (featSel) {
+                        featSel.innerHTML = this._featuredOptionsHtml(entry.groupId, null);
+                        featSel.disabled  = entry.groupId === null;
+                    }
+                } else if (target.classList.contains("feat-pity-featured-sel")) {
+                    entry.featuredId = (target as HTMLSelectElement).value || null;
+                } else {
+                    return;
+                }
+
                 this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
                 this.renderFeaturedPityProgress();
             });
         }
+    }
+
+    private _groupOptionsHtml(selectedId: string | null): string {
+        const groups = this.svc.rewardNodes.filter(n => n.isGroup && n.children.length >= 2);
+        return `<option value="">\u2014 select group \u2014</option>`
+            + groups.map(g =>
+                `<option value="${g.id}"${g.id === selectedId ? " selected" : ""}>${escapeHtml(g.name)}</option>`
+            ).join("");
+    }
+
+    private _featuredOptionsHtml(groupId: string | null, selectedId: string | null | undefined): string {
+        const group = groupId
+            ? this.svc.rewardNodes.find(n => n.id === groupId && n.isGroup)
+            : undefined;
+        if (!group) return `<option value="">\u2014 select group first \u2014</option>`;
+        return `<option value="">\u2014 select featured \u2014</option>`
+            + group.children.map(c =>
+                `<option value="${c.id}"${c.id === selectedId ? " selected" : ""}>${escapeHtml(c.name)}</option>`
+            ).join("");
     }
 
     private renderFeaturedPityConfig(): void {
         const toggle = document.getElementById("feat-pity-toggle") as HTMLInputElement | null;
         if (toggle) toggle.checked = this.svc.featuredPityEnabled;
 
-        const threshInput = document.getElementById("feat-pity-threshold") as HTMLInputElement | null;
-        if (threshInput) threshInput.value = String(this.svc.featuredPityThreshold);
+        const display = this.svc.featuredPityEnabled ? "block" : "none";
+        const addRow  = document.getElementById("feat-pity-add-row");
+        const editor  = document.getElementById("feat-pity-entries-editor");
+        if (editor) editor.style.display = display;
+        if (addRow) addRow.style.display  = display;
 
-        const display = this.svc.featuredPityEnabled ? "flex" : "none";
-        ["feat-pity-config-row", "feat-pity-group-row", "feat-pity-featured-row"].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.style.display = display;
-        });
+        this.renderFeaturedPityEntries();
+    }
 
-        this.renderFeaturedPityGroupPicker();
-        this.renderFeaturedPityFeaturedPicker();
+    private renderFeaturedPityEntries(): void {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        container.innerHTML = this.svc.featuredPityEntries.map(entry => {
+            const groupOpts    = this._groupOptionsHtml(entry.groupId);
+            const featuredOpts = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+            const featDisabled = entry.groupId === null ? " disabled" : "";
+            return `
+                <div class="feat-pity-entry" data-entry-id="${entry.id}">
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Every</label>
+                        <input type="number" class="pity-input feat-pity-threshold-input"
+                            value="${entry.threshold}" min="1" max="9999" step="1">
+                        <span class="pity-unit">entries</span>
+                        <button class="btn-icon btn-remove-feat-pity-entry" title="Remove">&#xd7;</button>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Group</label>
+                        <select class="pity-target-select feat-pity-group-sel">${groupOpts}</select>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Featured</label>
+                        <select class="pity-target-select feat-pity-featured-sel"${featDisabled}>${featuredOpts}</select>
+                    </div>
+                </div>`;
+        }).join("");
     }
 
     private renderFeaturedPityGroupPicker(): void {
-        const sel = document.getElementById("feat-pity-group") as HTMLSelectElement | null;
-        if (!sel) return;
-        const groups = this.svc.rewardNodes.filter(n => n.isGroup && n.children.length >= 2);
-        sel.innerHTML = `<option value="">— select group —</option>`
-            + groups.map(g =>
-                `<option value="${g.id}"${g.id === this.svc.featuredPityGroupId ? " selected" : ""}>${escapeHtml(g.name)}</option>`
-            ).join("");
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector<HTMLElement>(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row) continue;
+            const sel = row.querySelector<HTMLSelectElement>(".feat-pity-group-sel");
+            if (sel) sel.innerHTML = this._groupOptionsHtml(entry.groupId);
+        }
     }
 
     private renderFeaturedPityFeaturedPicker(): void {
-        const sel = document.getElementById("feat-pity-featured") as HTMLSelectElement | null;
-        if (!sel) return;
-        const group = this.svc.rewardNodes.find(n => n.id === this.svc.featuredPityGroupId && n.isGroup);
-        if (!group) {
-            sel.innerHTML = `<option value="">— select group first —</option>`;
-            return;
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector<HTMLElement>(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row) continue;
+            const sel = row.querySelector<HTMLSelectElement>(".feat-pity-featured-sel");
+            if (sel) {
+                sel.innerHTML = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+                sel.disabled  = entry.groupId === null;
+            }
         }
-        sel.innerHTML = `<option value="">— select featured reward —</option>`
-            + group.children.map(c =>
-                `<option value="${c.id}"${c.id === this.svc.featuredPityFeaturedId ? " selected" : ""}>${escapeHtml(c.name)}</option>`
-            ).join("");
     }
 
     private renderFeaturedPityProgress(): void {
-        const section = document.getElementById("feat-pity-section");
-        if (!section) return;
+        const container = document.getElementById("feat-pity-progress-container");
+        if (!container) return;
 
-        if (!this.svc.featuredPityEnabled || !this.svc.featuredPityInterceptor) {
-            section.style.display = "none";
+        const interceptors = this.svc.featuredPityEnabled
+            ? this.svc.featuredPityInterceptors
+            : [];
+
+        if (interceptors.length === 0) {
+            container.innerHTML = "";
             return;
         }
-        section.style.display = "block";
 
-        const counter   = this.svc.featuredPityInterceptor.counter;
-        // Progress fills relative to threshold-1 (the point at which next entry is forced).
-        const maxMisses = Math.max(1, this.svc.featuredPityThreshold - 1);
-        const pct       = Math.min(100, (counter / maxMisses) * 100);
-        const urgency   = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
-
-        const countEl     = document.getElementById("feat-pity-count");
-        const maxEl       = document.getElementById("feat-pity-max-display");
-        const featuredEl  = document.getElementById("feat-pity-featured-name");
-        const barEl       = document.getElementById("feat-pity-bar") as HTMLElement | null;
-
-        if (countEl)    countEl.textContent    = String(counter);
-        if (maxEl)      maxEl.textContent      = String(maxMisses);
-        if (featuredEl) featuredEl.textContent =
-            `${this.svc.featuredPityInterceptor.featuredName} (${this.svc.featuredPityInterceptor.groupName})`;
-        if (barEl) {
-            barEl.style.width           = `${pct}%`;
-            barEl.style.backgroundColor = urgency;
-        }
+        container.innerHTML = interceptors.map(interceptor => {
+            const counter   = interceptor.counter;
+            const threshold = Math.max(1, interceptor.threshold);
+            const pct       = Math.max(0, Math.min(100, (counter / threshold) * 100));
+            const urgency   = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+            return `
+                <div class="pity-progress-section">
+                    <div class="pity-header">
+                        <span>Featured: ${escapeHtml(interceptor.featuredName)} (${escapeHtml(interceptor.groupName)})</span>
+                        <span>${counter}&thinsp;/&thinsp;${threshold}</span>
+                    </div>
+                    <div class="pity-bar-track">
+                        <div class="pity-bar" style="width:${pct}%;background-color:${urgency}"></div>
+                    </div>
+                </div>`;
+        }).join("");
     }
 }
 

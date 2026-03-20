@@ -100,20 +100,8 @@
                                     <div class="pity-bar" id="std-pity-bar"></div>
                                 </div>
                             </div>
-                            <!-- Featured Pity progress bar -->
-                            <div class="pity-progress-section" id="feat-pity-section" style="display:none">
-                                <div class="pity-header">
-                                    <span>Featured Pity: <span id="feat-pity-featured-name">—</span></span>
-                                    <span>
-                                        <span id="feat-pity-count">0</span> /
-                                        <span id="feat-pity-max-display">1</span>
-                                        misses
-                                    </span>
-                                </div>
-                                <div class="pity-bar-track">
-                                    <div class="pity-bar" id="feat-pity-bar"></div>
-                                </div>
-                            </div>
+                            <!-- Featured Pity progress bars (populated by JS) -->
+                            <div id="feat-pity-progress-container"></div>
                         </div>
 
                         <!-- History -->
@@ -239,23 +227,10 @@
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                                <div class="pity-config-row" id="feat-pity-config-row" style="display:none">
-                                    <label class="pity-label" for="feat-pity-threshold">Every</label>
-                                    <input type="number" id="feat-pity-threshold" class="pity-input"
-                                        value="2" min="1" max="9999" step="1">
-                                    <span class="pity-unit">entries</span>
-                                </div>
-                                <div class="pity-config-row pity-target-row" id="feat-pity-group-row" style="display:none">
-                                    <label class="pity-label" for="feat-pity-group">Group</label>
-                                    <select id="feat-pity-group" class="pity-target-select">
-                                        <!-- populated by JS -->
-                                    </select>
-                                </div>
-                                <div class="pity-config-row pity-target-row" id="feat-pity-featured-row" style="display:none">
-                                    <label class="pity-label" for="feat-pity-featured">Featured</label>
-                                    <select id="feat-pity-featured" class="pity-target-select">
-                                        <!-- populated by JS -->
-                                    </select>
+                                <!-- Entry list and Add button populated/shown by JS -->
+                                <div id="feat-pity-entries-editor" style="display:none"></div>
+                                <div id="feat-pity-add-row" style="display:none">
+                                    <button id="btn-add-feat-pity" class="btn-add-node">+ Add Featured Pity</button>
                                 </div>
                             </section>
 
