@@ -39,8 +39,11 @@
         "src/PipelineFactory.ts",
         "src/utils/DomUtils.ts",
         "src/Storage.ts",
+        "./src/ui/WheelDrawer.ts",
+        "./src/ui/WheelAnimator.ts",
         "./src/ui/WheelSpinMode.ts",
         "./src/ui/SpinningAngleCalculator.ts",
+        "./src/ui/WheelSpinner.ts",
         "./src/ui/SpinningWheel.ts",
         "./src/RewarderService.ts",
         "./src/app.ts"

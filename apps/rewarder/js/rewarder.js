@@ -378,6 +378,258 @@ function storageDeleteStats(profileId) {
 function generateProfileId() {
     return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
 }
+// ===== Wheel Drawer =====
+/** Canvas 2D implementation of ISpinningWheelDrawer. */
+class CanvasWheelDrawer {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+    }
+    draw(rotation, segments, segAngles) {
+        const { canvas, ctx } = this;
+        const W = canvas.width;
+        const H = canvas.height;
+        const cx = W / 2;
+        const cy = H / 2;
+        const r = Math.min(cx, cy) - 18; // leave room for the pointer above the wheel
+        ctx.clearRect(0, 0, W, H);
+        if (segments.length === 0) {
+            // Empty placeholder ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#2a2a5a";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            this.drawPointer(cx, cy, r);
+            return;
+        }
+        const offset = -Math.PI / 2; // rotate so angle 0 points to the top
+        // ── Filled segments ───────────────────────────────────────────────────
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const angles = segAngles[i];
+            const startA = angles.start + rotation + offset;
+            const endA = startA + angles.sweep;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, r, startA, endA);
+            ctx.closePath();
+            ctx.fillStyle = seg.borderColor || "#334155";
+            ctx.fill();
+            // Subtle sheen so dark colours remain distinguishable
+            ctx.fillStyle = "rgba(255,255,255,0.06)";
+            ctx.fill();
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        // ── Text labels ───────────────────────────────────────────────────────
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const angles = segAngles[i];
+            const midA = angles.mid + rotation + offset;
+            const txtR = r * 0.62;
+            const arcLen = angles.sweep * txtR; // arc length at label radius
+            // Font size adapts to canvas size and available arc length
+            const fontSize = Math.max(8, Math.min(13, r * 0.09, arcLen * 0.45));
+            const maxChars = Math.floor(arcLen / (fontSize * 0.62));
+            if (maxChars < 1)
+                continue;
+            let label = seg.name;
+            if (label.length > maxChars) {
+                label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
+            }
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(midA);
+            ctx.translate(txtR, 0);
+            ctx.font = `bold ${fontSize}px "clear sans", Arial, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(label, 0, 0);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+        // ── Outer ring ────────────────────────────────────────────────────────
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#4a4a8a";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // ── Center cap ────────────────────────────────────────────────────────
+        const capR = r * 0.10;
+        ctx.beginPath();
+        ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
+        ctx.fillStyle = "#0f172a";
+        ctx.fill();
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        this.drawPointer(cx, cy, r);
+    }
+    drawPointer(cx, cy, r) {
+        const ctx = this.ctx;
+        const tipY = cy - r - 2; // tip just above the outer ring
+        const baseY = tipY - 13; // base of the triangle
+        ctx.beginPath();
+        ctx.moveTo(cx, tipY);
+        ctx.lineTo(cx - 9, baseY);
+        ctx.lineTo(cx + 9, baseY);
+        ctx.closePath();
+        ctx.shadowColor = "rgba(192,132,252,0.7)";
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = "#c084fc";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+// ===== Wheel Spin Animator =====
+/**
+ * Two-phase easing animator:
+ *   Phase 1 — ease-out-quart forward spin (toward corrected position or final).
+ *   Phase 2 — ease-in-quad settle (eases back from overshoot or forward from undershoot).
+ */
+class TwoPhaseWheelAnimator {
+    constructor() {
+        this.currentRotation = 0;
+        this.spinFromRotation = 0;
+        this.finalRotation = 0;
+        this.overshootRotation = null;
+        this.phase1StartTime = 0;
+        this.phase1Duration = 0;
+        this.phase2StartTime = 0;
+        this.phase2Duration = 0;
+        this.accelCapMs = 0;
+        this.inPhase2 = false;
+        this.rafId = null;
+        this.resolveSpinPromise = null;
+        this.onFrame = null;
+    }
+    get isSpinning() { return this.rafId !== null; }
+    start(params, onFrame) {
+        // Cancel any in-flight animation, resolving the old promise immediately.
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        const oldResolve = this.resolveSpinPromise;
+        this.resolveSpinPromise = null;
+        this.onFrame = null;
+        oldResolve?.();
+        this.onFrame = onFrame;
+        this.accelCapMs = params.accelCapMs;
+        this.inPhase2 = false;
+        this.spinFromRotation = params.fromRotation;
+        this.currentRotation = params.fromRotation;
+        this.finalRotation = params.finalRotation;
+        if (params.correctionDelta != null && params.correctionDelta !== 0) {
+            this.overshootRotation = params.finalRotation + params.correctionDelta;
+            this.phase1Duration = params.normalDuration * params.phase1Frac;
+            this.phase2Duration = params.normalDuration * (1 - params.phase1Frac);
+        }
+        else {
+            this.overshootRotation = null;
+            this.phase1Duration = params.normalDuration;
+            this.phase2Duration = 0;
+        }
+        this.phase1StartTime = performance.now();
+        return new Promise(resolve => {
+            this.resolveSpinPromise = resolve;
+            this.scheduleFrame();
+        });
+    }
+    accelerate() {
+        if (this.rafId === null)
+            return;
+        // If already in settle phase, just snap to final.
+        if (this.inPhase2) {
+            this.finishSpin();
+            return;
+        }
+        const elapsed = performance.now() - this.phase1StartTime;
+        if (elapsed >= this.phase1Duration)
+            return;
+        // Rebase from current visual position, dropping correction phase.
+        const phase1Target = this.overshootRotation ?? this.finalRotation;
+        const t = Math.min(elapsed / this.phase1Duration, 1);
+        const curPos = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
+        this.overshootRotation = null;
+        this.phase2Duration = 0;
+        this.spinFromRotation = curPos;
+        this.currentRotation = curPos;
+        this.phase1StartTime = performance.now();
+        this.phase1Duration = this.accelCapMs;
+    }
+    skip() {
+        if (this.rafId === null)
+            return;
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+        this.finishSpin();
+    }
+    // ── Animation loop ────────────────────────────────────────────────────────
+    scheduleFrame() {
+        this.rafId = requestAnimationFrame(() => this.frame());
+    }
+    frame() {
+        const now = performance.now();
+        if (!this.inPhase2) {
+            // Phase 1: ease-out-quart toward phase1Target.
+            const phase1Target = this.overshootRotation ?? this.finalRotation;
+            const elapsed = now - this.phase1StartTime;
+            if (elapsed >= this.phase1Duration) {
+                this.currentRotation = phase1Target;
+                this.onFrame?.();
+                if (this.overshootRotation != null) {
+                    // Transition to phase 2.
+                    this.inPhase2 = true;
+                    this.spinFromRotation = phase1Target;
+                    this.phase2StartTime = now;
+                    this.scheduleFrame();
+                }
+                else {
+                    this.finishSpin();
+                }
+                return;
+            }
+            const t = elapsed / this.phase1Duration;
+            this.currentRotation = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
+        }
+        else {
+            // Phase 2: ease-in-quad settle to finalRotation.
+            const elapsed = now - this.phase2StartTime;
+            if (elapsed >= this.phase2Duration) {
+                this.finishSpin();
+                return;
+            }
+            const t = elapsed / this.phase2Duration;
+            this.currentRotation = this.spinFromRotation + this.easeInQuad(t) * (this.finalRotation - this.spinFromRotation);
+        }
+        this.onFrame?.();
+        this.scheduleFrame();
+    }
+    finishSpin() {
+        this.currentRotation = this.finalRotation;
+        this.inPhase2 = false;
+        this.overshootRotation = null;
+        this.rafId = null;
+        this.onFrame?.();
+        this.onFrame = null;
+        const resolve = this.resolveSpinPromise;
+        this.resolveSpinPromise = null;
+        resolve?.();
+    }
+    // ── Easing functions ──────────────────────────────────────────────────────
+    easeOutQuart(t) {
+        return 1 - Math.pow(1 - Math.min(t, 1), 4);
+    }
+    easeInQuad(t) {
+        return Math.min(t, 1) ** 2;
+    }
+}
 // ===== Wheel Spin Mode (Strategy Pattern) =====
 class NormalSpinStrategy {
     constructor() {
@@ -432,8 +684,7 @@ class WheelSpinModeFactory {
 // ── Concrete calculators ──────────────────────────────────────────────────────
 /** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
 class NaturalAngleCalculator {
-    calculate(segAngles) {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }) {
         const margin = sweep * 0.10;
         const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
@@ -445,8 +696,7 @@ class NaturalAngleCalculator {
  * The wheel appears to overshoot by a small amount then settle.
  */
 class OvershootAngleCalculator {
-    calculate(segAngles) {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }) {
         // Stay 15% from each edge so the overshoot lands within the same segment.
         const margin = sweep * 0.15;
         const TAU = 2 * Math.PI;
@@ -464,8 +714,7 @@ class OvershootAngleCalculator {
  * The wheel appears to lose momentum right before the target, then creep in.
  */
 class UndershootAngleCalculator {
-    calculate(segAngles) {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }) {
         // Keep 20% margin from each edge so the undershoot pause stays inside the segment.
         const margin = sweep * 0.20;
         const TAU = 2 * Math.PI;
@@ -507,276 +756,79 @@ WeightedRandomCalculatorFactory.ACCEL_POOL = [
     [new OvershootAngleCalculator(), 20],
 ];
 WeightedRandomCalculatorFactory.NATURAL_ONLY = new NaturalAngleCalculator();
-// ===== Spinning Wheel UI =====
+// ===== Wheel Spinner =====
+class DefaultWheelSpinner {
+    constructor(animator, calculatorFactory) {
+        this.animator = animator;
+        this.calculatorFactory = calculatorFactory;
+    }
+    spin(targetIndex, context, segAngles, onFrame) {
+        const TAU = 2 * Math.PI;
+        const angles = segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
+        const calculator = this.calculatorFactory.create(context);
+        const landing = calculator.calculate(angles);
+        // Compute how much to rotate so landing.landingAngle faces the pointer at top.
+        // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
+        const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
+        const currentNorm = ((this.animator.currentRotation % TAU) + TAU) % TAU;
+        let delta = targetRot - currentNorm;
+        if (delta <= 0)
+            delta += TAU;
+        delta += DefaultWheelSpinner.MIN_SPINS * TAU;
+        const params = {
+            fromRotation: this.animator.currentRotation,
+            finalRotation: this.animator.currentRotation + delta,
+            correctionDelta: landing.correctionDelta ?? null,
+            normalDuration: DefaultWheelSpinner.NORMAL_DURATION,
+            phase1Frac: DefaultWheelSpinner.PHASE1_FRAC,
+            accelCapMs: DefaultWheelSpinner.ACCEL_CAP_MS,
+        };
+        return this.animator.start(params, onFrame);
+    }
+    accelerate() { this.animator.accelerate(); }
+    skip() { this.animator.skip(); }
+}
+// ── Timing defaults ────────────────────────────────────────────────────────
+DefaultWheelSpinner.NORMAL_DURATION = 4000; // ms for a full normal spin
+DefaultWheelSpinner.ACCEL_CAP_MS = 900; // max remaining ms after accelerate()
+DefaultWheelSpinner.MIN_SPINS = 6; // minimum full rotations before stopping
+DefaultWheelSpinner.PHASE1_FRAC = 0.92; // fraction of total duration for main spin
+// ===== Spinning Wheel (Orchestrator) =====
+/**
+ * Orchestrates the drawer, animator, and spinner to present a complete
+ * spinning-wheel widget.  This class owns the segment data model and wires
+ * the three subcomponents together, but delegates all drawing, animation, and
+ * spin-target computation to them.
+ */
 class SpinningWheel {
-    constructor(canvas, calculatorFactory) {
+    constructor(drawer, animator, spinner) {
         this.segments = [];
         this.segAngles = [];
-        // Animation state
-        this.currentRotation = 0;
-        this.spinFromRotation = 0;
-        this.finalRotation = 0;
-        this.overshootRotation = null;
-        this.phase1StartTime = 0;
-        this.phase1Duration = 0;
-        this.phase2StartTime = 0;
-        this.phase2Duration = 0;
-        this.inPhase2 = false;
-        this.rafId = null;
-        this.resolveSpinPromise = null;
-        this.canvas = canvas;
-        this.ctx = canvas.getContext("2d");
-        this.calculatorFactory = calculatorFactory;
-        this.draw();
+        this.drawer = drawer;
+        this.animator = animator;
+        this.spinner = spinner;
+        this.redraw();
     }
     // ===== Public API =====
     setSegments(segments) {
         this.segments = segments;
         this.segAngles = this.computeAngles(segments);
-        // Only redraw if not currently spinning (avoid interrupting the animation)
-        if (this.rafId === null)
-            this.draw();
+        if (!this.animator.isSpinning)
+            this.redraw();
     }
     findSegmentIndex(rewardId) {
         const idx = this.segments.findIndex(s => s.id === rewardId);
         return idx >= 0 ? idx : 0;
     }
-    /** Start spin animation to targetIndex. Returns a Promise that resolves when done. */
     spin(targetIndex, context) {
-        // Cancel any previous in-flight animation
-        if (this.rafId !== null) {
-            cancelAnimationFrame(this.rafId);
-            this.rafId = null;
-        }
-        const oldResolve = this.resolveSpinPromise;
-        this.resolveSpinPromise = null;
-        oldResolve?.();
-        const TAU = 2 * Math.PI;
-        const angles = this.segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
-        const calculator = this.calculatorFactory.create(context);
-        const landing = calculator.calculate(angles);
-        // Compute how much to rotate so that landing.landingAngle faces the pointer at top.
-        // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π)  ⟹  rot ≡ -a
-        const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
-        const currentNorm = ((this.currentRotation % TAU) + TAU) % TAU;
-        let delta = targetRot - currentNorm;
-        if (delta <= 0)
-            delta += TAU;
-        delta += SpinningWheel.MIN_SPINS * TAU;
-        this.inPhase2 = false;
-        this.spinFromRotation = this.currentRotation;
-        this.finalRotation = this.currentRotation + delta;
-        if (landing.correctionDelta != null && landing.correctionDelta !== 0) {
-            // positive correctionDelta → overshoot (wheel goes past, phase 2 eases back)
-            // negative correctionDelta → undershoot (wheel stops short, phase 2 nudges forward)
-            this.overshootRotation = this.finalRotation + landing.correctionDelta;
-            this.phase1Duration = SpinningWheel.NORMAL_DURATION * SpinningWheel.PHASE1_FRAC;
-            this.phase2Duration = SpinningWheel.NORMAL_DURATION * (1 - SpinningWheel.PHASE1_FRAC);
-        }
-        else {
-            this.overshootRotation = null;
-            this.phase1Duration = SpinningWheel.NORMAL_DURATION;
-            this.phase2Duration = 0;
-        }
-        this.phase1StartTime = performance.now();
-        return new Promise(resolve => {
-            this.resolveSpinPromise = resolve;
-            this.scheduleFrame();
-        });
+        return this.spinner.spin(targetIndex, context, this.segAngles, () => this.redraw());
     }
-    /** Speed up the current spin so it finishes within ACCEL_CAP_MS. */
-    accelerate() {
-        if (this.rafId === null)
-            return;
-        // If already in the bounce-back phase, just snap to final.
-        if (this.inPhase2) {
-            this.finishSpin();
-            return;
-        }
-        const elapsed = performance.now() - this.phase1StartTime;
-        if (elapsed >= this.phase1Duration)
-            return;
-        // Rebase from the current visual position, targeting finalRotation (droppping bounce).
-        const phase1Target = this.overshootRotation ?? this.finalRotation;
-        const t = Math.min(elapsed / this.phase1Duration, 1);
-        const curPos = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
-        this.overshootRotation = null;
-        this.phase2Duration = 0;
-        this.spinFromRotation = curPos;
-        this.currentRotation = curPos;
-        this.phase1StartTime = performance.now();
-        this.phase1Duration = SpinningWheel.ACCEL_CAP_MS;
-    }
-    /** Instantly jump to the final position and resolve the spin promise. */
-    skip() {
-        if (this.rafId === null)
-            return;
-        cancelAnimationFrame(this.rafId);
-        this.rafId = null;
-        this.finishSpin();
-    }
-    // ===== Drawing =====
-    draw() {
-        const { canvas, ctx } = this;
-        const W = canvas.width;
-        const H = canvas.height;
-        const cx = W / 2;
-        const cy = H / 2;
-        const r = Math.min(cx, cy) - 18; // leave room for the pointer above the wheel
-        ctx.clearRect(0, 0, W, H);
-        if (this.segments.length === 0) {
-            // Draw an empty placeholder ring
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-            ctx.strokeStyle = "#2a2a5a";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            this.drawPointer(cx, cy, r);
-            return;
-        }
-        const rot = this.currentRotation;
-        const offset = -Math.PI / 2; // rotate so angle 0 points to the top
-        // ── Draw filled segments ──────────────────────────────────────────────
-        for (let i = 0; i < this.segments.length; i++) {
-            const seg = this.segments[i];
-            const angles = this.segAngles[i];
-            const startA = angles.start + rot + offset;
-            const endA = startA + angles.sweep;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.arc(cx, cy, r, startA, endA);
-            ctx.closePath();
-            ctx.fillStyle = seg.borderColor || "#334155";
-            ctx.fill();
-            // Subtle light sheen so dark colors remain distinguishable
-            ctx.fillStyle = "rgba(255,255,255,0.06)";
-            ctx.fill();
-            ctx.strokeStyle = "#0f172a";
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
-        // ── Draw text labels ──────────────────────────────────────────────────
-        for (let i = 0; i < this.segments.length; i++) {
-            const seg = this.segments[i];
-            const angles = this.segAngles[i];
-            const midA = angles.mid + rot + offset;
-            const txtR = r * 0.62;
-            const arcLen = angles.sweep * txtR; // arc length at label radius
-            // Font adapts to both canvas size and available arc length.
-            const fontSize = Math.max(8, Math.min(13, r * 0.09, arcLen * 0.45));
-            const maxChars = Math.floor(arcLen / (fontSize * 0.62));
-            if (maxChars < 1)
-                continue;
-            let label = seg.name;
-            if (label.length > maxChars) {
-                label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
-            }
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(midA);
-            ctx.translate(txtR, 0);
-            ctx.font = `bold ${fontSize}px "clear sans", Arial, sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.shadowColor = "rgba(0,0,0,0.8)";
-            ctx.shadowBlur = 4;
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(label, 0, 0);
-            ctx.shadowBlur = 0;
-            ctx.restore();
-        }
-        // ── Outer ring ────────────────────────────────────────────────────────
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-        ctx.strokeStyle = "#4a4a8a";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        // ── Center cap ───────────────────────────────────────────────────────
-        const capR = r * 0.10;
-        ctx.beginPath();
-        ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
-        ctx.fillStyle = "#0f172a";
-        ctx.fill();
-        ctx.strokeStyle = "#c084fc";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        this.drawPointer(cx, cy, r);
-    }
-    drawPointer(cx, cy, r) {
-        const ctx = this.ctx;
-        const tipY = cy - r - 2; // tip just above the outer ring
-        const baseY = tipY - 13; // base of the triangle
-        ctx.beginPath();
-        ctx.moveTo(cx, tipY);
-        ctx.lineTo(cx - 9, baseY);
-        ctx.lineTo(cx + 9, baseY);
-        ctx.closePath();
-        ctx.shadowColor = "rgba(192,132,252,0.7)";
-        ctx.shadowBlur = 10;
-        ctx.fillStyle = "#c084fc";
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    }
-    // ===== Animation internals =====
-    scheduleFrame() {
-        this.rafId = requestAnimationFrame(() => this.frame());
-    }
-    frame() {
-        const now = performance.now();
-        if (!this.inPhase2) {
-            // Phase 1: forward spin toward overshootRotation (bounce) or finalRotation (no bounce).
-            const phase1Target = this.overshootRotation ?? this.finalRotation;
-            const elapsed = now - this.phase1StartTime;
-            if (elapsed >= this.phase1Duration) {
-                this.currentRotation = phase1Target;
-                this.draw();
-                if (this.overshootRotation != null) {
-                    // Transition to phase 2: ease back to finalRotation.
-                    this.inPhase2 = true;
-                    this.spinFromRotation = phase1Target;
-                    this.phase2StartTime = now;
-                    this.scheduleFrame();
-                }
-                else {
-                    this.finishSpin();
-                }
-                return;
-            }
-            const t = elapsed / this.phase1Duration;
-            this.currentRotation = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
-        }
-        else {
-            // Phase 2: gentle ease-back from overshootRotation to finalRotation.
-            const elapsed = now - this.phase2StartTime;
-            if (elapsed >= this.phase2Duration) {
-                this.finishSpin();
-                return;
-            }
-            const t = elapsed / this.phase2Duration;
-            this.currentRotation = this.spinFromRotation + this.easeInQuad(t) * (this.finalRotation - this.spinFromRotation);
-        }
-        this.draw();
-        this.scheduleFrame();
-    }
-    finishSpin() {
-        this.currentRotation = this.finalRotation;
-        this.inPhase2 = false;
-        this.overshootRotation = null;
-        this.rafId = null;
-        this.draw();
-        const resolve = this.resolveSpinPromise;
-        this.resolveSpinPromise = null;
-        resolve?.();
-    }
-    /** Ease-out quart: fast start, dramatic slow-down at the end. */
-    easeOutQuart(t) {
-        return 1 - Math.pow(1 - Math.min(t, 1), 4);
-    }
-    /** Ease-in quad: starts slow then accelerates (used for the bounce-back phase). */
-    easeInQuad(t) {
-        return Math.min(t, 1) ** 2;
-    }
+    accelerate() { this.spinner.accelerate(); }
+    skip() { this.spinner.skip(); }
     // ===== Helpers =====
+    redraw() {
+        this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
+    }
     computeAngles(segs) {
         if (segs.length === 0)
             return [];
@@ -814,10 +866,6 @@ class SpinningWheel {
         return result;
     }
 }
-SpinningWheel.NORMAL_DURATION = 4000; // ms for a full spin
-SpinningWheel.ACCEL_CAP_MS = 900; // max remaining ms after accelerate()
-SpinningWheel.MIN_SPINS = 6; // minimum full rotations before stopping
-SpinningWheel.PHASE1_FRAC = 0.92; // fraction of total duration for forward spin
 SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10°)
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
@@ -1126,7 +1174,11 @@ class RewarderApp {
     init() {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create("normal");
-        this.wheel = new SpinningWheel(document.getElementById("wheel-canvas"), this.calculatorFactory);
+        const canvas = document.getElementById("wheel-canvas");
+        const drawer = new CanvasWheelDrawer(canvas);
+        const animator = new TwoPhaseWheelAnimator();
+        const spinner = new DefaultWheelSpinner(animator, this.calculatorFactory);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }

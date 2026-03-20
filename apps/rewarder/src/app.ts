@@ -18,10 +18,11 @@ class RewarderApp {
     public init(): void {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create("normal");
-        this.wheel = new SpinningWheel(
-            document.getElementById("wheel-canvas") as HTMLCanvasElement,
-            this.calculatorFactory
-        );
+        const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
+        const drawer   = new CanvasWheelDrawer(canvas);
+        const animator = new TwoPhaseWheelAnimator();
+        const spinner  = new DefaultWheelSpinner(animator, this.calculatorFactory);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }

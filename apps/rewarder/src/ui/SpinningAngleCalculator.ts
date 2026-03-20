@@ -24,7 +24,7 @@ interface ISpinningAngleCalculator {
      * Determine the precise landing position for this spin.
      * @param segAngles Geometry of the target segment from `computeAngles()`.
      */
-    calculate(segAngles: { start: number; mid: number; sweep: number }): SpinLandingResult;
+    calculate(segAngles: SegmentAngles): SpinLandingResult;
 }
 
 interface ISpinningAngleCalculatorFactory {
@@ -36,8 +36,7 @@ interface ISpinningAngleCalculatorFactory {
 
 /** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
 class NaturalAngleCalculator implements ISpinningAngleCalculator {
-    calculate(segAngles: { start: number; mid: number; sweep: number }): SpinLandingResult {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
         const margin       = sweep * 0.10;
         const TAU          = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
@@ -50,8 +49,7 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
  * The wheel appears to overshoot by a small amount then settle.
  */
 class OvershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate(segAngles: { start: number; mid: number; sweep: number }): SpinLandingResult {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
         // Stay 15% from each edge so the overshoot lands within the same segment.
         const margin         = sweep * 0.15;
         const TAU            = 2 * Math.PI;
@@ -70,8 +68,7 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
  * The wheel appears to lose momentum right before the target, then creep in.
  */
 class UndershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate(segAngles: { start: number; mid: number; sweep: number }): SpinLandingResult {
-        const { start, sweep } = segAngles;
+    calculate({ start, sweep }: SegmentAngles): SpinLandingResult {
         // Keep 20% margin from each edge so the undershoot pause stays inside the segment.
         const margin         = sweep * 0.20;
         const TAU            = 2 * Math.PI;
