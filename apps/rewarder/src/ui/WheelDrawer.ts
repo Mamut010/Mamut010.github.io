@@ -33,7 +33,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         const H  = canvas.height;
         const cx = W / 2;
         const cy = H / 2;
-        const r  = Math.min(cx, cy) - 18;   // leave room for the pointer above the wheel
+        const r  = Math.min(cx, cy) * 0.88; // leave room for the pointer above the wheel
 
         ctx.clearRect(0, 0, W, H);
 
@@ -42,7 +42,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, 2 * Math.PI);
             ctx.strokeStyle = "#2a2a5a";
-            ctx.lineWidth   = 2;
+            ctx.lineWidth   = Math.max(1, r * 0.015);
             ctx.stroke();
             this.drawPointer(cx, cy, r);
             return;
@@ -70,7 +70,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
             ctx.fill();
 
             ctx.strokeStyle = "#0f172a";
-            ctx.lineWidth   = 1.5;
+            ctx.lineWidth   = Math.max(1, r * 0.011);
             ctx.stroke();
         }
 
@@ -83,7 +83,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
             const arcLen = angles.sweep * txtR;   // arc length at label radius
 
             // Font size adapts to canvas size and available arc length
-            const fontSize = Math.max(8, Math.min(13, r * 0.09, arcLen * 0.45));
+            const fontSize = Math.max(r * 0.05, Math.min(r * 0.098, arcLen * 0.45));
             const maxChars = Math.floor(arcLen / (fontSize * 0.62));
             if (maxChars < 1) continue;
 
@@ -101,7 +101,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
             ctx.textAlign     = "center";
             ctx.textBaseline  = "middle";
             ctx.shadowColor   = "rgba(0,0,0,0.8)";
-            ctx.shadowBlur    = 4;
+            ctx.shadowBlur    = Math.max(2, r * 0.03);
             ctx.fillStyle     = "#ffffff";
             ctx.fillText(label, 0, 0);
             ctx.shadowBlur    = 0;
@@ -112,7 +112,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, 2 * Math.PI);
         ctx.strokeStyle = "#4a4a8a";
-        ctx.lineWidth   = 3;
+        ctx.lineWidth   = Math.max(1, r * 0.023);
         ctx.stroke();
 
         // ── Center cap ────────────────────────────────────────────────────────
@@ -122,25 +122,27 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.fillStyle   = "#0f172a";
         ctx.fill();
         ctx.strokeStyle = "#c084fc";
-        ctx.lineWidth   = 2;
+        ctx.lineWidth   = Math.max(1, r * 0.015);
         ctx.stroke();
 
         this.drawPointer(cx, cy, r);
     }
 
     private drawPointer(cx: number, cy: number, r: number): void {
-        const ctx   = this.ctx;
-        const tipY  = cy - r - 2;    // tip just above the outer ring
-        const baseY = tipY - 13;     // base of the triangle
+        const ctx  = this.ctx;
+        const ph   = Math.max(8,  r * 0.098); // pointer height
+        const pw   = Math.max(5,  r * 0.068); // pointer half-width
+        const tipY = cy - r - Math.max(1, r * 0.015); // tip just above the outer ring
+        const baseY = tipY - ph;
 
         ctx.beginPath();
-        ctx.moveTo(cx,     tipY);
-        ctx.lineTo(cx - 9, baseY);
-        ctx.lineTo(cx + 9, baseY);
+        ctx.moveTo(cx,      tipY);
+        ctx.lineTo(cx - pw, baseY);
+        ctx.lineTo(cx + pw, baseY);
         ctx.closePath();
 
         ctx.shadowColor = "rgba(192,132,252,0.7)";
-        ctx.shadowBlur  = 10;
+        ctx.shadowBlur  = Math.max(4, r * 0.076);
         ctx.fillStyle   = "#c084fc";
         ctx.fill();
         ctx.shadowBlur  = 0;

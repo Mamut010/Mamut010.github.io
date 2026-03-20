@@ -64,19 +64,133 @@ body {
 
 .header-spacer { min-width: 80px; }
 
-/* ===== Layout ===== */
-.app-layout {
+/* ===== Tab Navigation ===== */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.2em;
+    border-bottom: 2px solid var(--border);
+}
+
+.tab-btn {
+    font-family: var(--font);
+    font-size: 0.88em;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.55em 1.4em;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color 0.18s, border-color 0.18s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab-panel { display: block; }
+.tab-panel.is-hidden { display: none; }
+
+/* ===== Play Tab Layout ===== */
+.play-layout {
     display: flex;
     gap: 1.4em;
     align-items: flex-start;
 }
 
-/* ===== Config Panel ===== */
-.config-panel {
-    flex: 0 0 310px;
+.play-primary {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 1em;
+}
+
+/* Constrain the wheel+card and roll controls to a comfortable width */
+.play-primary .result-section {
+    width: 100%;
+    max-width: 600px;
+}
+
+.play-primary .roll-section {
+    width: 100%;
+    max-width: 480px;
+}
+
+.play-secondary {
+    flex: 0 0 260px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2em;
+}
+
+/* ===== Config Tab Layout ===== */
+.config-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+}
+
+/* Collapsible group */
+.config-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.config-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
+    padding: 0.8em 1.1em;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    transition: background 0.15s;
+}
+.config-group-header::-webkit-details-marker { display: none; }
+.config-group-header:hover { background: var(--accent-dim); }
+
+details[open] > .config-group-header {
+    border-bottom: 1px solid var(--border);
+}
+
+.config-group-title {
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.config-group-chevron {
+    font-size: 0.95em;
+    color: var(--text-dim);
+    transition: transform 0.22s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+details[open] > .config-group-header .config-group-chevron {
+    transform: rotate(180deg);
+}
+
+.config-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+    padding: 1em 1.1em;
+}
+
+/* Inner sections inside a group sit one level deeper visually */
+.config-group-body .config-section {
+    background: var(--surface-2);
 }
 
 .config-section {
@@ -327,8 +441,9 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5em;
+    max-width: 340px;
 }
-.pity-label { font-size: 0.8em; color: var(--text-muted); flex: 1; }
+.pity-label { font-size: 0.8em; color: var(--text-muted); flex: 0 0 80px; }
 .pity-unit  { font-size: 0.78em; color: var(--text-muted); }
 
 .pity-input {
@@ -491,15 +606,6 @@ body {
     background: rgba(239, 68, 68, 0.06);
 }
 
-/* ===== Main Content ===== */
-.main-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1.2em;
-}
-
 /* Result section */
 .result-section {
     background: var(--surface);
@@ -540,7 +646,7 @@ body {
 
 #wheel-canvas {
     display: block;
-    width: min(300px, 100%);
+    width: min(520px, 100%);
     aspect-ratio: 1;
 }
 
@@ -627,7 +733,7 @@ body {
 
 .stat-row {
     display: grid;
-    grid-template-columns: 120px 1fr 96px;
+    grid-template-columns: 90px 1fr 82px;
     align-items: center;
     gap: 0.8em;
     margin-bottom: 0.72em;
@@ -656,8 +762,8 @@ body {
     gap: 0.5em;
     font-size: 0.82em;
 }
-.stat-count { color: var(--text); font-weight: 700; min-width: 28px; text-align: right; }
-.stat-pct   { color: var(--text-muted); min-width: 44px; text-align: right; }
+.stat-count { color: var(--text); font-weight: 700; min-width: 22px; text-align: right; }
+.stat-pct   { color: var(--text-muted); min-width: 40px; text-align: right; }
 
 /* Pity progress */
 .pity-progress-section {
@@ -730,10 +836,13 @@ body {
 
 /* ===== Responsive ===== */
 
-/* Tablet: tighten the sidebar */
+/* Tablet: tighten the secondary sidebar */
 @media (max-width: 900px) {
-    .config-panel {
-        flex: 0 0 260px;
+    .play-secondary {
+        flex: 0 0 230px;
+    }
+    .stat-row {
+        grid-template-columns: 70px 1fr 74px;
     }
 }
 
@@ -754,15 +863,20 @@ body {
     .header-spacer {
         display: none;
     }
-    .app-layout {
+    .play-layout {
         flex-direction: column;
     }
-    .config-panel {
+    .play-primary,
+    .play-secondary {
         flex: none;
         width: 100%;
     }
-    .main-content {
-        width: 100%;
+    .play-primary .result-section,
+    .play-primary .roll-section {
+        max-width: 100%;
+    }
+    .config-layout {
+        gap: 0.65em;
     }
     .roll-buttons {
         display: grid;
