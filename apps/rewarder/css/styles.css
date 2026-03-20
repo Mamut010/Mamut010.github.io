@@ -336,13 +336,20 @@ details[open] > .config-group-header .config-group-chevron {
     padding: 0.42em 0 0.3em;
 }
 
-.group-icon {
-    font-size: 0.95em;
+.btn-toggle-group {
+    background: none;
+    border: none;
+    font-size: 0.6em;
     color: var(--text-muted);
     flex-shrink: 0;
-    user-select: none;
+    cursor: pointer;
     line-height: 1;
+    padding: 0.1em 0.3em;
+    transition: transform 0.18s, color 0.15s;
 }
+.btn-toggle-group:hover { color: var(--accent); }
+.tree-group.is-collapsed .btn-toggle-group { transform: rotate(-90deg); }
+.tree-group.is-collapsed .group-children { display: none; }
 
 .group-children {
     margin-left: 0.9em;

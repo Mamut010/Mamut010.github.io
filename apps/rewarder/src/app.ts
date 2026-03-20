@@ -162,7 +162,10 @@ class RewarderApp {
 
         list.addEventListener("click", (e) => {
             const target = e.target as HTMLElement;
-            if (target.closest(".btn-delete-reward")) {
+            if (target.closest(".btn-toggle-group")) {
+                const treeNode = target.closest<HTMLElement>(".tree-node.tree-group");
+                if (treeNode) treeNode.classList.toggle("is-collapsed");
+            } else if (target.closest(".btn-delete-reward")) {
                 const treeNode = target.closest<HTMLElement>(".tree-node");
                 if (treeNode) {
                     this.svc.removeNode(treeNode.dataset.id!);
@@ -325,7 +328,7 @@ class RewarderApp {
         return `
             <div class="tree-node tree-group" data-id="${group.id}">
                 <div class="reward-config-row group-row">
-                    <span class="group-icon">&#x229e;</span>
+                    <button class="btn-toggle-group" title="Collapse group">&#x25BC;</button>
                     <input type="text" class="reward-name-input" value="${escapeHtml(group.name)}" placeholder="Group name">
                     <div class="reward-rate-group">
                         <input type="number" class="reward-rate-input" value="${group.rate}" min="0" max="100" step="0.01">
