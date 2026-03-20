@@ -20,9 +20,14 @@ class RewarderService {
     pityInterceptor:    HardPityInterceptor    | null = null;
     stdPityInterceptor: StandardPityInterceptor | null = null;
     private rng = new MathRandomNumberGenerator();
+    private readonly _colorProvider: IRewardColorProvider;
 
     profiles: RewardProfile[] = [];
     activeProfileId = "";
+
+    constructor(colorProvider: IRewardColorProvider = new CyclingColorProvider()) {
+        this._colorProvider = colorProvider;
+    }
 
     // ===== Init =====
 
@@ -103,9 +108,10 @@ class RewarderService {
 
     addRootLeaf(): string {
         const id = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         this.rewardNodes.push({
             id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
+            color, borderColor: color, children: [],
         });
         return id;
     }
@@ -113,12 +119,13 @@ class RewarderService {
     addRootGroup(): string {
         const gid = `group-${this.nextId++}`;
         const lid = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         this.rewardNodes.push({
             id: gid, name: "New Group", rate: 0, isGroup: true,
             color: "", borderColor: "",
             children: [{
                 id: lid, name: "New Reward", rate: 100, isGroup: false,
-                color: "#c084fc", borderColor: "#c084fc", children: [],
+                color, borderColor: color, children: [],
             }],
         });
         return gid;
@@ -128,9 +135,10 @@ class RewarderService {
         const group = this.findNode(groupId);
         if (!group || !group.isGroup) return null;
         const id = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         group.children.push({
             id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
+            color, borderColor: color, children: [],
         });
         return id;
     }

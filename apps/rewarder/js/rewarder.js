@@ -1,4 +1,33 @@
 "use strict";
+// ===== IRewardColorProvider =====
+// Provides colors for newly created reward nodes.
+// ===== CyclingColorProvider =====
+// Cycles through a fixed palette of visually distinct colors,
+// assigning a new one to each newly created reward node.
+class CyclingColorProvider {
+    constructor() {
+        this._index = 0;
+    }
+    next() {
+        const color = CyclingColorProvider.PALETTE[this._index];
+        this._index = (this._index + 1) % CyclingColorProvider.PALETTE.length;
+        return color;
+    }
+}
+CyclingColorProvider.PALETTE = [
+    "#c084fc", // purple
+    "#f472b6", // pink
+    "#fb923c", // orange
+    "#facc15", // yellow
+    "#4ade80", // green
+    "#34d399", // emerald
+    "#38bdf8", // sky
+    "#818cf8", // indigo
+    "#f87171", // red
+    "#a3e635", // lime
+    "#2dd4bf", // teal
+    "#e879f9", // fuchsia
+];
 class Collections {
     constructor() { }
     /**
@@ -945,7 +974,7 @@ SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10Â
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
-    constructor() {
+    constructor(colorProvider = new CyclingColorProvider()) {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
@@ -962,6 +991,7 @@ class RewarderService {
         this.rng = new MathRandomNumberGenerator();
         this.profiles = [];
         this.activeProfileId = "";
+        this._colorProvider = colorProvider;
     }
     // ===== Init =====
     init() {
@@ -1030,21 +1060,23 @@ class RewarderService {
     // ===== Node Mutations =====
     addRootLeaf() {
         const id = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         this.rewardNodes.push({
             id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
+            color, borderColor: color, children: [],
         });
         return id;
     }
     addRootGroup() {
         const gid = `group-${this.nextId++}`;
         const lid = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         this.rewardNodes.push({
             id: gid, name: "New Group", rate: 0, isGroup: true,
             color: "", borderColor: "",
             children: [{
                     id: lid, name: "New Reward", rate: 100, isGroup: false,
-                    color: "#c084fc", borderColor: "#c084fc", children: [],
+                    color, borderColor: color, children: [],
                 }],
         });
         return gid;
@@ -1054,9 +1086,10 @@ class RewarderService {
         if (!group || !group.isGroup)
             return null;
         const id = `leaf-${this.nextId++}`;
+        const color = this._colorProvider.next();
         group.children.push({
             id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
+            color, borderColor: color, children: [],
         });
         return id;
     }
