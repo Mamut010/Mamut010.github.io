@@ -378,6 +378,43 @@ function storageDeleteStats(profileId) {
 function generateProfileId() {
     return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
 }
+// ===== Wheel Spin Mode (Strategy Pattern) =====
+class NormalSpinStrategy {
+    constructor() {
+        this.id = "normal";
+        this.label = "Normal";
+    }
+    execute(wheel, targetIndex) {
+        return wheel.spin(targetIndex);
+    }
+}
+class AccelerateSpinStrategy {
+    constructor() {
+        this.id = "accelerate";
+        this.label = "⚡ Fast";
+    }
+    execute(wheel, targetIndex) {
+        const p = wheel.spin(targetIndex);
+        wheel.accelerate();
+        return p;
+    }
+}
+class SkipSpinStrategy {
+    constructor() {
+        this.id = "skip";
+        this.label = "⏭ Skip";
+    }
+    execute(wheel, targetIndex) {
+        const p = wheel.spin(targetIndex);
+        wheel.skip();
+        return p;
+    }
+}
+const SPIN_STRATEGIES = {
+    normal: new NormalSpinStrategy(),
+    accelerate: new AccelerateSpinStrategy(),
+    skip: new SkipSpinStrategy(),
+};
 // ===== Spinning Wheel UI =====
 class SpinningWheel {
     constructor(canvas) {
@@ -910,6 +947,7 @@ class RewarderApp {
     constructor() {
         this.svc = new RewarderService();
         this.isRolling = false;
+        this.spinStrategy = SPIN_STRATEGIES.normal;
     }
     init() {
         this.svc.init();
@@ -943,8 +981,18 @@ class RewarderApp {
         document.getElementById("btn-roll-10").addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100").addEventListener("click", () => this.doRolls(100));
         document.getElementById("btn-reset").addEventListener("click", () => this.resetStats());
-        document.getElementById("btn-accelerate")?.addEventListener("click", () => this.wheel.accelerate());
-        document.getElementById("btn-skip")?.addEventListener("click", () => this.wheel.skip());
+        const modeSel = document.getElementById("wheel-mode-selector");
+        if (modeSel) {
+            modeSel.addEventListener("click", (e) => {
+                const btn = e.target.closest(".btn-mode");
+                const mode = btn?.dataset.mode;
+                if (!mode || !SPIN_STRATEGIES[mode])
+                    return;
+                this.spinStrategy = SPIN_STRATEGIES[mode];
+                modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
+                btn.classList.add("is-active");
+            });
+        }
         document.getElementById("btn-add-leaf").addEventListener("click", () => this.addRootLeaf());
         document.getElementById("btn-add-group").addEventListener("click", () => this.addRootGroup());
         const pityTargetSel = document.getElementById("pity-target");
@@ -1064,52 +1112,17 @@ class RewarderApp {
             return;
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
-        if (count === 1) {
-            await this.doSingleRollWithWheel();
-        }
-        else {
-            await this.doMultiRoll(count);
+        for (let i = 0; i < count; i++) {
+            const { reward, rollNum } = await this.svc.roll();
+            await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
+            this.renderLatestResult(reward, rollNum);
+            this.renderStats();
+            this.renderPityProgress();
         }
         this.renderHistory();
         this.svc.saveCurrentStats();
         this.isRolling = false;
         this.setRollButtonsDisabled(false);
-    }
-    async doSingleRollWithWheel() {
-        const wheelView = document.getElementById("wheel-view");
-        const cardView = document.getElementById("card-view");
-        wheelView.style.display = "flex";
-        cardView.style.display = "none";
-        this.setWheelControlsDisabled(false);
-        const { reward, rollNum } = await this.svc.roll();
-        await this.wheel.spin(this.wheel.findSegmentIndex(reward.id));
-        await sleep(420);
-        this.setWheelControlsDisabled(true);
-        wheelView.style.display = "none";
-        cardView.style.display = "flex";
-        this.renderLatestResult(reward, rollNum);
-        this.renderStats();
-        this.renderPityProgress();
-    }
-    async doMultiRoll(count) {
-        const ANIMATED_MAX = 10;
-        const animate = count <= ANIMATED_MAX;
-        for (let i = 0; i < count; i++) {
-            const { reward, rollNum } = await this.svc.roll();
-            if (animate) {
-                this.renderLatestResult(reward, rollNum);
-                this.renderStats();
-                this.renderPityProgress();
-                if (i < count - 1)
-                    await sleep(130);
-            }
-        }
-        if (!animate && this.svc.history.length > 0) {
-            const last = this.svc.history[0];
-            this.renderLatestResult(last.reward, last.rollNum);
-            this.renderStats();
-            this.renderPityProgress();
-        }
     }
     setRollButtonsDisabled(disabled) {
         ["btn-roll", "btn-roll-10", "btn-roll-100"].forEach(id => {
@@ -1117,14 +1130,6 @@ class RewarderApp {
             if (btn)
                 btn.disabled = disabled;
         });
-    }
-    setWheelControlsDisabled(disabled) {
-        const accel = document.getElementById("btn-accelerate");
-        const skip = document.getElementById("btn-skip");
-        if (accel)
-            accel.disabled = disabled;
-        if (skip)
-            skip.disabled = disabled;
     }
     resetStats() {
         this.svc.resetStats();
@@ -1165,13 +1170,6 @@ class RewarderApp {
     }
     // ===== Renders =====
     renderAll() {
-        const wheelView = document.getElementById("wheel-view");
-        const cardView = document.getElementById("card-view");
-        if (wheelView)
-            wheelView.style.display = "none";
-        if (cardView)
-            cardView.style.display = "flex";
-        this.setWheelControlsDisabled(true);
         const pityDisplay = this.svc.pityEnabled ? "flex" : "none";
         const row = document.getElementById("pity-config-row");
         if (row)

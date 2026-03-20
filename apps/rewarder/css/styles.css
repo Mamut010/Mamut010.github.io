@@ -505,11 +505,11 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.2em 1em;
-    min-height: 170px;
+    padding: 1em;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    gap: 0.75em;
 }
 
 /* Card view (reward pop-up) */
@@ -517,12 +517,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 130px;
+    min-height: 90px;
     width: 100%;
 }
 
 /* Wheel view */
 .wheel-view {
+    display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.85em;
@@ -545,34 +546,31 @@ body {
 
 .wheel-controls {
     display: flex;
-    gap: 0.6em;
+    justify-content: center;
 }
 
-.btn-accelerate {
-    background: var(--surface-2);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.45);
-    font-size: 0.84em;
-    padding: 0.45em 0.9em;
-}
-.btn-accelerate:hover:not(:disabled) {
-    background: rgba(245, 158, 11, 0.12);
-    border-color: #f59e0b;
-    transform: translateY(-1px);
+.wheel-mode-selector {
+    display: flex;
+    gap: 0.35em;
 }
 
-.btn-skip {
+.btn-mode {
     background: var(--surface-2);
     color: var(--text-muted);
     border: 1px solid var(--border);
-    font-size: 0.84em;
-    padding: 0.45em 0.9em;
+    font-size: 0.82em;
+    padding: 0.4em 0.85em;
+    border-radius: 7px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.btn-skip:hover:not(:disabled) {
+.btn-mode:hover {
+    color: var(--text);
+    border-color: var(--border-hover);
+}
+.btn-mode.is-active {
     background: var(--accent-dim);
-    border-color: var(--accent);
     color: var(--accent);
-    transform: translateY(-1px);
+    border-color: var(--accent);
 }
 
 .idle-msg {
