@@ -74,10 +74,10 @@
                             <div id="stats-rows">
                                 <!-- populated by JS -->
                             </div>
-                            <!-- Pity progress bar -->
+                            <!-- Hard Pity progress bar -->
                             <div class="pity-progress-section" id="pity-section">
                                 <div class="pity-header">
-                                    <span>Pity: <span id="pity-target-name">—</span></span>
+                                    <span>Hard Pity: <span id="pity-target-name">—</span></span>
                                     <span>
                                         <span id="pity-count">0</span> /
                                         <span id="pity-threshold-display">90</span>
@@ -85,6 +85,19 @@
                                 </div>
                                 <div class="pity-bar-track">
                                     <div class="pity-bar" id="pity-bar"></div>
+                                </div>
+                            </div>
+                            <!-- Standard Pity progress bar -->
+                            <div class="pity-progress-section" id="std-pity-section" style="display:none">
+                                <div class="pity-header">
+                                    <span>Standard Pity</span>
+                                    <span>
+                                        <span id="std-pity-count">0</span> /
+                                        <span id="std-pity-threshold-display">10</span>
+                                    </span>
+                                </div>
+                                <div class="pity-bar-track">
+                                    <div class="pity-bar" id="std-pity-bar"></div>
                                 </div>
                             </div>
                         </div>
@@ -175,6 +188,32 @@
                                     <select id="pity-target" class="pity-target-select">
                                         <!-- populated by JS -->
                                     </select>
+                                </div>
+                            </section>
+
+                            <section class="config-section pity-section">
+                                <div class="pity-toggle-row">
+                                    <h2 class="section-title" style="margin-bottom:0">Standard Pity</h2>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="std-pity-toggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="pity-config-row" id="std-pity-config-row" style="display:none">
+                                    <label class="pity-label" for="std-pity-threshold">Every</label>
+                                    <input type="number" id="std-pity-threshold" class="pity-input"
+                                        value="10" min="1" max="9999" step="1">
+                                    <span class="pity-unit">rolls</span>
+                                </div>
+                                <div class="std-pity-pool-wrap" id="std-pity-pool-row" style="display:none">
+                                    <div class="std-pity-pool-header">Pity pool</div>
+                                    <div class="std-pity-pool-editor" id="std-pity-pool-editor">
+                                        <!-- populated by JS -->
+                                    </div>
+                                    <div class="rate-summary std-pity-rate-summary">
+                                        Pool: <span id="std-pity-total-rate">0.00</span>%
+                                        <span class="rate-warning-inline" id="std-pity-rate-warning" style="display:none">&#x26A0; must sum to 100</span>
+                                    </div>
                                 </div>
                             </section>
 

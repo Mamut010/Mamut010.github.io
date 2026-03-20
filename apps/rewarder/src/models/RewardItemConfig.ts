@@ -1,3 +1,8 @@
+interface StandardPityEntry {
+    nodeId: string;   // ID of a root-level node in the active pool
+    rate:   number;   // override rate within the pity pool (all entries should sum to 100)
+}
+
 interface RewardNodeConfig {
     id: string;
     name: string;
