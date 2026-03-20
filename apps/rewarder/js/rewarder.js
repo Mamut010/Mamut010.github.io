@@ -954,10 +954,11 @@ class RewarderApp {
         const totalEl = document.getElementById("total-rate");
         if (totalEl)
             totalEl.textContent = rootTotal.toFixed(2);
+        const rootOk = Math.abs(rootTotal - 100) < 0.001;
         const valid = this.isRateValid();
         const warning = document.getElementById("rate-warning");
         if (warning)
-            warning.style.display = valid ? "none" : "inline";
+            warning.style.display = rootOk ? "none" : "inline";
         for (const group of this.rewardNodes) {
             if (!group.isGroup)
                 continue;
