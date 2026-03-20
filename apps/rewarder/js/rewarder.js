@@ -205,15 +205,13 @@ class RewardPipeline {
                 return await interceptor.intercept(ctx, next);
             }
             else {
-                return ctx.resolver.resolve(ctx.tree, ctx.exec);
+                return this.resolver.resolve(ctx.tree, ctx.exec);
             }
         };
     }
     async createExecutionContext(executionContext) {
         return {
             exec: executionContext,
-            treeFactory: this.treeFactory,
-            resolver: this.resolver,
             tree: await this.treeFactory.create(executionContext),
         };
     }
@@ -296,17 +294,19 @@ class RewardTreeFactory {
         return new RewardTree(root);
     }
     buildNode(config) {
+        const metadata = { id: config.id };
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name));
+            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
         }
-        const groupNode = new RewardTreeNode();
+        const groupNode = new RewardTreeNode(undefined, metadata);
         for (const child of config.children) {
             groupNode.connect(this.buildNode(child), child.rate);
         }
         return groupNode;
     }
 }
-function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredPityThreshold, featuredPityGroupConfig, featuredPityFeaturedConfig) {
+function buildPipeline(params) {
+    const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredPityThreshold, featuredPityGroupConfig, featuredPityFeaturedConfig, } = params;
     const treeFactory = new RewardTreeFactory(nodes);
     const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
     const collector = new SubtreeRewardCollector();
@@ -316,7 +316,7 @@ function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig, stdP
     let stdPityInterceptor = null;
     let featuredPityInterceptor = null;
     if (featuredPityEnabled && featuredPityGroupConfig !== null && featuredPityFeaturedConfig !== null) {
-        featuredPityInterceptor = new FeaturedPityInterceptor(featuredPityThreshold, featuredPityGroupConfig, featuredPityFeaturedConfig, nodes);
+        featuredPityInterceptor = new FeaturedPityInterceptor(featuredPityThreshold, featuredPityGroupConfig, featuredPityFeaturedConfig);
     }
     if (stdPityEnabled && stdPityNodes.length > 0) {
         const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
@@ -438,6 +438,13 @@ class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
  *  - When the guarantee is owed but the roll does not enter the group, the
  *    guarantee carries over to the next roll.
  *
+ * Multiple instances of this class can coexist independently — one per featured
+ * group — without any shared state between them.
+ *
+ * Group discovery and hit detection are done at intercept time against the live
+ * tree (via node metadata) and the traversal path (via result.path), so no
+ * structural pre-knowledge of the tree is required.
+ *
  * Ordering note: place BEFORE StandardPityInterceptor in the pipeline so this
  * patch is visible to downstream interceptors.
  */
@@ -448,12 +455,11 @@ class FeaturedPityInterceptor {
     get groupName() { return this._group.name; }
     get featuredId() { return this._featured.id; }
     get featuredName() { return this._featured.name; }
-    constructor(_threshold, _group, _featured, rootNodes) {
+    constructor(_threshold, _group, _featured) {
         this._threshold = _threshold;
         this._group = _group;
         this._featured = _featured;
         this._counter = 0;
-        this._groupIndex = rootNodes.findIndex(n => n.id === _group.id);
     }
     async intercept(ctx, next) {
         const isOwed = this._isOwed();
@@ -462,7 +468,7 @@ class FeaturedPityInterceptor {
         }
         const result = await next(ctx);
         const hitFeatured = result.rewards.some(r => r.id === this._featured.id);
-        const hitGroup = RewardUtils.containsResultRecursive(this._group.children, result);
+        const hitGroup = result.path.some(e => e.target.metadata?.["id"] === this._group.id);
         if (hitFeatured) {
             // Featured reward obtained (naturally or via override) → reset.
             this._counter = 0;
@@ -478,16 +484,31 @@ class FeaturedPityInterceptor {
         return this._counter >= this._threshold - 1;
     }
     /**
-     * Rewires the group node in the already-built tree so it only connects to the
-     * featured reward.  Works directly on ctx.tree (which is freshly created per
-     * pipeline.invoke() call and discarded afterwards) — no cloning required.
+     * Searches the live tree for the group node by its metadata id and rewires
+     * it so it only connects to the featured reward.  Works directly on ctx.tree
+     * (freshly created per pipeline.invoke() call and discarded afterwards) — no
+     * cloning required.  Because the search uses the live tree rather than a
+     * pre-computed index, it remains correct even if the tree's structure has
+     * changed since the interceptor was constructed.
      */
     _applyOverride(ctx) {
-        if (this._groupIndex < 0)
+        const groupNode = this._findGroupNode(ctx.tree.root);
+        if (!groupNode)
             return;
-        const groupNode = ctx.tree.root.children[this._groupIndex];
         groupNode.disconnectAll();
         groupNode.connect(new RewardTreeNode(new Reward(this._featured.id, this._featured.name)), 100);
+    }
+    /** DFS search for the node whose metadata.id matches the configured group id. */
+    _findGroupNode(node) {
+        for (const child of node.children) {
+            if (child.metadata?.["id"] === this._group.id) {
+                return child;
+            }
+            const found = this._findGroupNode(child);
+            if (found)
+                return found;
+        }
+        return undefined;
     }
 }
 function escapeHtml(s) {
@@ -1113,7 +1134,19 @@ class RewarderService {
             this.featuredPityGroupId = null;
         if (!featuredFeatured)
             this.featuredPityFeaturedId = null;
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor } = buildPipeline(this.rewardNodes, this.pityEnabled, this.pityThreshold, targetConfig, this.stdPityEnabled, this.stdPityThreshold, this.resolvedStdPityNodes(), this.featuredPityEnabled, this.featuredPityThreshold, featuredGroup, featuredFeatured);
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor } = buildPipeline({
+            nodes: this.rewardNodes,
+            pityEnabled: this.pityEnabled,
+            pityThreshold: this.pityThreshold,
+            pityTargetConfig: targetConfig,
+            stdPityEnabled: this.stdPityEnabled,
+            stdPityThreshold: this.stdPityThreshold,
+            stdPityNodes: this.resolvedStdPityNodes(),
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredPityThreshold: this.featuredPityThreshold,
+            featuredPityGroupConfig: featuredGroup,
+            featuredPityFeaturedConfig: featuredFeatured,
+        });
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
         this.stdPityInterceptor = stdPityInterceptor;

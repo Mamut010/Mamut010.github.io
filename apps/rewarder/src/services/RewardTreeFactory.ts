@@ -10,10 +10,11 @@ class RewardTreeFactory implements IRewardTreeFactory<Reward> {
     }
 
     private buildNode(config: RewardNodeConfig): RewardTreeNode<Reward> {
+        const metadata = { id: config.id };
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name));
+            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
         }
-        const groupNode = new RewardTreeNode<Reward>();
+        const groupNode = new RewardTreeNode<Reward>(undefined, metadata);
         for (const child of config.children) {
             groupNode.connect(this.buildNode(child), child.rate);
         }

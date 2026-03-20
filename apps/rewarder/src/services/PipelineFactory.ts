@@ -1,4 +1,4 @@
-function buildPipeline(
+type PipelineBuildingParams = {
     nodes:                     readonly RewardNodeConfig[],
     pityEnabled:               boolean,
     pityThreshold:             number,
@@ -10,12 +10,30 @@ function buildPipeline(
     featuredPityThreshold:     number,
     featuredPityGroupConfig:   RewardNodeConfig | null,
     featuredPityFeaturedConfig: RewardNodeConfig | null,
-): {
+};
+
+type PipelineBuildingResult = {
     pipeline:                RewardPipeline<Reward>;
     pityInterceptor:         HardPityInterceptor     | null;
     stdPityInterceptor:      StandardPityInterceptor  | null;
     featuredPityInterceptor: FeaturedPityInterceptor  | null;
-} {
+};
+
+function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
+    const {
+        nodes,
+        pityEnabled,
+        pityThreshold,
+        pityTargetConfig,
+        stdPityEnabled,
+        stdPityThreshold,
+        stdPityNodes,
+        featuredPityEnabled,
+        featuredPityThreshold,
+        featuredPityGroupConfig,
+        featuredPityFeaturedConfig,
+    } = params;
+
     const treeFactory = new RewardTreeFactory(nodes);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
     const collector   = new SubtreeRewardCollector<Reward>();
@@ -31,7 +49,6 @@ function buildPipeline(
             featuredPityThreshold,
             featuredPityGroupConfig,
             featuredPityFeaturedConfig,
-            nodes,
         );
     }
 

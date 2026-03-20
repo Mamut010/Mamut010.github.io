@@ -61,19 +61,20 @@ class RewarderService {
         if (!featuredGroup)    this.featuredPityGroupId    = null;
         if (!featuredFeatured) this.featuredPityFeaturedId = null;
 
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor } = buildPipeline(
-            this.rewardNodes,
-            this.pityEnabled,
-            this.pityThreshold,
-            targetConfig,
-            this.stdPityEnabled,
-            this.stdPityThreshold,
-            this.resolvedStdPityNodes(),
-            this.featuredPityEnabled,
-            this.featuredPityThreshold,
-            featuredGroup,
-            featuredFeatured,
-        );
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptor } = buildPipeline({
+            nodes: this.rewardNodes,
+            pityEnabled: this.pityEnabled,
+            pityThreshold: this.pityThreshold,
+            pityTargetConfig: targetConfig,
+            stdPityEnabled: this.stdPityEnabled,
+            stdPityThreshold: this.stdPityThreshold,
+            stdPityNodes: this.resolvedStdPityNodes(),
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredPityThreshold: this.featuredPityThreshold,
+            featuredPityGroupConfig: featuredGroup,
+            featuredPityFeaturedConfig: featuredFeatured,
+        });
+        
         this.pipeline                = pipeline;
         this.pityInterceptor         = pityInterceptor;
         this.stdPityInterceptor      = stdPityInterceptor;

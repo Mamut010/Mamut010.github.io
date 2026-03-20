@@ -21,12 +21,18 @@
  *  - When the guarantee is owed but the roll does not enter the group, the
  *    guarantee carries over to the next roll.
  *
+ * Multiple instances of this class can coexist independently — one per featured
+ * group — without any shared state between them.
+ *
+ * Group discovery and hit detection are done at intercept time against the live
+ * tree (via node metadata) and the traversal path (via result.path), so no
+ * structural pre-knowledge of the tree is required.
+ *
  * Ordering note: place BEFORE StandardPityInterceptor in the pipeline so this
  * patch is visible to downstream interceptors.
  */
 class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
     private _counter = 0;
-    private readonly _groupIndex: number;
 
     public get counter(): number           { return this._counter; }
     public setCounter(value: number): void { this._counter = value; }
@@ -40,10 +46,7 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
         private readonly _threshold: number,
         private readonly _group:     RewardNodeConfig,
         private readonly _featured:  RewardNodeConfig,
-        rootNodes:                   readonly RewardNodeConfig[],
-    ) {
-        this._groupIndex = rootNodes.findIndex(n => n.id === _group.id);
-    }
+    ) {}
 
     public async intercept(
         ctx: RewardPipelineContext<Reward>,
@@ -57,7 +60,9 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
         const result = await next(ctx);
 
         const hitFeatured = result.rewards.some(r => r.id === this._featured.id);
-        const hitGroup    = RewardUtils.containsResultRecursive(this._group.children, result);
+        const hitGroup    = result.path.some(
+            e => (e.target.metadata?.["id"] as string | undefined) === this._group.id,
+        );
 
         if (hitFeatured) {
             // Featured reward obtained (naturally or via override) → reset.
@@ -76,14 +81,30 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
     }
 
     /**
-     * Rewires the group node in the already-built tree so it only connects to the
-     * featured reward.  Works directly on ctx.tree (which is freshly created per
-     * pipeline.invoke() call and discarded afterwards) — no cloning required.
+     * Searches the live tree for the group node by its metadata id and rewires
+     * it so it only connects to the featured reward.  Works directly on ctx.tree
+     * (freshly created per pipeline.invoke() call and discarded afterwards) — no
+     * cloning required.  Because the search uses the live tree rather than a
+     * pre-computed index, it remains correct even if the tree's structure has
+     * changed since the interceptor was constructed.
      */
     private _applyOverride(ctx: RewardPipelineContext<Reward>): void {
-        if (this._groupIndex < 0) return;
-        const groupNode = ctx.tree.root.children[this._groupIndex];
+        const groupNode = this._findGroupNode(ctx.tree.root);
+        if (!groupNode) return;
         groupNode.disconnectAll();
         groupNode.connect(new RewardTreeNode(new Reward(this._featured.id, this._featured.name)), 100);
     }
+
+    /** DFS search for the node whose metadata.id matches the configured group id. */
+    private _findGroupNode(node: IRewardTreeNode<Reward>): IRewardTreeNode<Reward> | undefined {
+        for (const child of node.children) {
+            if ((child.metadata?.["id"] as string | undefined) === this._group.id) {
+                return child;
+            }
+            const found = this._findGroupNode(child);
+            if (found) return found;
+        }
+        return undefined;
+    }
 }
+

@@ -23,7 +23,7 @@ class RewardPipeline<TReward> implements IRewardPipeline<TReward> {
                 return await interceptor.intercept(ctx, next);
             }
             else {
-                return ctx.resolver.resolve(ctx.tree, ctx.exec);
+                return this.resolver.resolve(ctx.tree, ctx.exec);
             }
         };
     }
@@ -31,8 +31,6 @@ class RewardPipeline<TReward> implements IRewardPipeline<TReward> {
     private async createExecutionContext(executionContext: RewardExecutionContext): Promise<RewardPipelineContext<TReward>> {
         return {
             exec: executionContext,
-            treeFactory: this.treeFactory,
-            resolver: this.resolver,
             tree: await this.treeFactory.create(executionContext),
         };
     }
