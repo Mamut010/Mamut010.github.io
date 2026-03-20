@@ -17,7 +17,7 @@ class RewarderApp {
 
     public init(): void {
         this.svc.init();
-        this.spinStrategy = this.spinModeFactory.create("normal");
+        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
         const drawer   = new CanvasWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
@@ -59,7 +59,7 @@ class RewarderApp {
         if (modeSel) {
             modeSel.addEventListener("click", (e) => {
                 const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-mode");
-                const mode = btn?.dataset.mode as IWheelSpinStrategy["id"] | undefined;
+                const mode = btn?.dataset.mode as WheelSpinStrategyCode | undefined;
                 if (!mode) return;
                 try { this.spinStrategy = this.spinModeFactory.create(mode); } catch { return; }
                 modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
