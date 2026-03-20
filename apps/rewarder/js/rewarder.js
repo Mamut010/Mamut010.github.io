@@ -1958,7 +1958,7 @@ class RewarderApp {
         section.style.display = "block";
         const counter = this.svc.pityInterceptor.counter;
         const threshold = this.svc.pityThreshold;
-        const pct = Math.min(100, (counter / threshold) * 100);
+        const pct = computePercentage(counter, threshold);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
         const targetName = this.svc.pityInterceptor.targetName ?? "—";
         const countEl = document.getElementById("pity-count");
@@ -2171,7 +2171,7 @@ class RewarderApp {
         section.style.display = "block";
         const counter = this.svc.stdPityInterceptor.counter;
         const threshold = this.svc.stdPityThreshold;
-        const pct = Math.min(100, (counter / threshold) * 100);
+        const pct = computePercentage(counter, threshold);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
         const countEl = document.getElementById("std-pity-count");
         const thresholdEl = document.getElementById("std-pity-threshold-display");
@@ -2356,14 +2356,14 @@ class RewarderApp {
         }
         container.innerHTML = interceptors.map(interceptor => {
             const counter = interceptor.counter;
-            const threshold = Math.max(1, interceptor.threshold);
-            const pct = Math.max(0, Math.min(100, (counter / threshold) * 100));
+            const threshold = interceptor.threshold;
+            const pct = computePercentage(counter, threshold);
             const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
             return `
                 <div class="pity-progress-section">
                     <div class="pity-header">
                         <span>Featured: ${escapeHtml(interceptor.featuredName)} (${escapeHtml(interceptor.groupName)})</span>
-                        <span>${counter}&thinsp;/&thinsp;${threshold}</span>
+                        <span>${counter}&thinsp;/&thinsp;${interceptor.threshold}</span>
                     </div>
                     <div class="pity-bar-track">
                         <div class="pity-bar" style="width:${pct}%;background-color:${urgency}"></div>
@@ -2372,6 +2372,10 @@ class RewarderApp {
         }).join("");
     }
 }
+const computePercentage = (counter, threshold) => {
+    const computingThreshold = Math.max(1, threshold - 1);
+    return Math.max(0, Math.min(100, (counter / computingThreshold) * 100));
+};
 document.addEventListener("DOMContentLoaded", () => {
     new RewarderApp().init();
 });
