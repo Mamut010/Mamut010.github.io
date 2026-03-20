@@ -98,14 +98,17 @@ class RewardTreeNode {
     }
     connect(node, weight) {
         if (this._outgoingEdges.has(node)) {
-            return false;
+            return undefined;
         }
-        const edge = new RewardTreeEdge(this, node, weight, weight);
+        const edge = new RewardTreeEdge(this, node, weight);
         this._outgoingEdges.set(node, edge);
-        return true;
+        return edge;
     }
     disconnect(node) {
         return this._outgoingEdges.delete(node);
+    }
+    disconnectAll() {
+        this._outgoingEdges.clear();
     }
     getConnection(node) {
         return this._outgoingEdges.get(node);
@@ -202,7 +205,7 @@ class RewardPipeline {
                 return await interceptor.intercept(ctx, next);
             }
             else {
-                return ctx.resolver.resolve(ctx.tree, ctx.exec);
+                return this.resolver.resolve(ctx.tree, ctx.exec);
             }
         };
     }
@@ -210,7 +213,6 @@ class RewardPipeline {
         return {
             exec: executionContext,
             tree: await this.treeFactory.create(executionContext),
-            resolver: this.resolver,
         };
     }
 }
@@ -292,15 +294,53 @@ class RewardTreeFactory {
         return new RewardTree(root);
     }
     buildNode(config) {
+        const metadata = { id: config.id };
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name));
+            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
         }
-        const groupNode = new RewardTreeNode();
+        const groupNode = new RewardTreeNode(undefined, metadata);
         for (const child of config.children) {
             groupNode.connect(this.buildNode(child), child.rate);
         }
         return groupNode;
     }
+}
+function buildPipeline(params) {
+    const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
+    const treeFactory = new RewardTreeFactory(nodes);
+    const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
+    const collector = new SubtreeRewardCollector();
+    const resolver = new RewardResolver(walker, collector);
+    const pipeline = new RewardPipeline(treeFactory, resolver);
+    let pityInterceptor = null;
+    let stdPityInterceptor = null;
+    const featuredPityInterceptors = [];
+    if (featuredPityEnabled) {
+        for (const cfg of featuredConfigs) {
+            featuredPityInterceptors.push(new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured));
+        }
+    }
+    if (stdPityEnabled && stdPityNodes.length > 0) {
+        const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
+        if (Math.abs(stdTotal - 100) < 0.001) {
+            stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+        }
+    }
+    if (pityEnabled) {
+        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+        if (targetConfig) {
+            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+        }
+    }
+    // Featured outermost (outgoing priority — final say over result),
+    // then Standard (may override tree), then Hard (forces specific node).
+    const interceptors = [
+        ...featuredPityInterceptors,
+        ...(stdPityInterceptor ? [stdPityInterceptor] : []),
+        ...(pityInterceptor ? [pityInterceptor] : []),
+    ];
+    pipeline.setInterceptors(interceptors);
+    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
 }
 // ===== Base Pity Interceptor =====
 // Abstract base class that encapsulates the shared pity-trigger logic:
@@ -311,7 +351,7 @@ class RewardTreeFactory {
 // Subclasses implement the two template methods:
 //   _isHit()       — decides whether a result counts as a natural pity hit
 //   _buildPityTree() — constructs the reward tree used for the forced pull
-class BasePityInterceptor {
+class BaseRollCountingPityInterceptor {
     get counter() { return this._counter; }
     setCounter(value) { this._counter = value; }
     constructor(_threshold) {
@@ -335,7 +375,7 @@ class BasePityInterceptor {
         return await next(ctx);
     }
 }
-class HardPityInterceptor extends BasePityInterceptor {
+class HardPityInterceptor extends BaseRollCountingPityInterceptor {
     get targetName() { return this._target.name; }
     get targetId() { return this._target.id; }
     constructor(threshold, _target) {
@@ -363,7 +403,7 @@ class HardPityInterceptor extends BasePityInterceptor {
  * tree override is visible to downstream interceptors (HardPityInterceptor will
  * then evaluate its hit-check against the pity-pool result).
  */
-class StandardPityInterceptor extends BasePityInterceptor {
+class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
     constructor(threshold, _pityNodes) {
         super(threshold);
         this._pityNodes = _pityNodes;
@@ -376,34 +416,104 @@ class StandardPityInterceptor extends BasePityInterceptor {
         return await new RewardTreeFactory(this._pityNodes).create(ctx.exec);
     }
 }
-function buildPipeline(nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes) {
-    const treeFactory = new RewardTreeFactory(nodes);
-    const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
-    const collector = new SubtreeRewardCollector();
-    const resolver = new RewardResolver(walker, collector);
-    const pipeline = new RewardPipeline(treeFactory, resolver);
-    let pityInterceptor = null;
-    let stdPityInterceptor = null;
-    if (stdPityEnabled && stdPityNodes.length > 0) {
-        const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
-        if (Math.abs(stdTotal - 100) < 0.001) {
-            stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+// ===== Featured Pity Interceptor =====
+/**
+ * Group-scoped pity interceptor (outgoing / result-replacement model).
+ *
+ * Lets the pipeline resolve naturally, then inspects the returned rewards:
+ *
+ *  - Natural featured hit   → reset counter.
+ *  - Non-featured group hit → increment counter; when counter reaches the
+ *                             threshold, replace that reward in the result
+ *                             with the featured one and reset.
+ *  - No group hit           → counter unchanged (guarantee carries over).
+ *
+ * Because the interception happens on the outgoing path and the tree is never
+ * modified, this interceptor must be placed OUTERMOST in the pipeline (first
+ * in the interceptors array).  It executes after Standard/Hard pity have had
+ * their chance and its result replacement takes final precedence.
+ *
+ * Counter semantics:
+ *   threshold = 1  →  every non-featured group entry is immediately replaced.
+ *   threshold = N  →  the N-th consecutive non-featured group entry is replaced.
+ *
+ * Multiple instances coexist independently — one per (group, featured) pairing.
+ * Group leaf discovery uses node metadata written by RewardTreeFactory, so no
+ * structural pre-knowledge of the tree is required.
+ */
+class FeaturedPityInterceptor {
+    get entryId() { return this._entryId; }
+    get counter() { return this._counter; }
+    setCounter(value) { this._counter = value; }
+    get groupId() { return this._group.id; }
+    get groupName() { return this._group.name; }
+    get featuredId() { return this._featured.id; }
+    get featuredName() { return this._featured.name; }
+    get threshold() { return this._threshold; }
+    constructor(_entryId, _threshold, _group, _featured) {
+        this._entryId = _entryId;
+        this._threshold = _threshold;
+        this._group = _group;
+        this._featured = _featured;
+        this._counter = 0;
+    }
+    async intercept(ctx, next) {
+        // Collect all leaf reward IDs that belong to this group in the live tree.
+        const groupLeafIds = this._collectGroupLeafIds(ctx.tree.root);
+        const result = await next(ctx);
+        if (groupLeafIds.size === 0)
+            return result;
+        // Find the first reward in the result that belongs to this group.
+        const hitIndex = result.rewards.findIndex(r => groupLeafIds.has(r.id));
+        if (hitIndex === -1) {
+            // No group entry this roll — carry over guarantee, counter unchanged.
+            return result;
+        }
+        if (result.rewards[hitIndex].id === this._featured.id) {
+            // Natural featured hit — reset.
+            this._counter = 0;
+            return result;
+        }
+        // Non-featured group entry.
+        this._counter++;
+        if (this._counter >= this._threshold) {
+            // Threshold reached — replace result, reset.
+            this._counter = 0;
+            result.rewards[hitIndex] = new Reward(this._featured.id, this._featured.name);
+        }
+        return result;
+    }
+    /**
+     * Finds the group node in the live tree by metadata id, then collects all
+     * leaf reward IDs beneath it.
+     */
+    _collectGroupLeafIds(root) {
+        const groupNode = this._findNodeById(root, this._group.id);
+        if (!groupNode)
+            return new Set();
+        const ids = new Set();
+        this._collectLeafIds(groupNode, ids);
+        return ids;
+    }
+    _findNodeById(node, id) {
+        for (const child of node.children) {
+            if (child.metadata?.["id"] === id)
+                return child;
+            const found = this._findNodeById(child, id);
+            if (found)
+                return found;
+        }
+        return undefined;
+    }
+    _collectLeafIds(node, ids) {
+        if (node.reward !== undefined) {
+            ids.add(node.reward.id);
+            return;
+        }
+        for (const child of node.children) {
+            this._collectLeafIds(child, ids);
         }
     }
-    if (pityEnabled) {
-        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
-        if (targetConfig) {
-            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
-        }
-    }
-    // Standard pity first: overrides the tree so downstream interceptors see the pity pool.
-    const interceptors = [];
-    if (stdPityInterceptor)
-        interceptors.push(stdPityInterceptor);
-    if (pityInterceptor)
-        interceptors.push(pityInterceptor);
-    pipeline.setInterceptors(interceptors);
-    return { pipeline, pityInterceptor, stdPityInterceptor };
 }
 function escapeHtml(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -471,6 +581,9 @@ function storageDeleteStats(profileId) {
 }
 function generateProfileId() {
     return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+}
+function generateFeaturedPityEntryId() {
+    return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
 }
 // ===== Wheel Drawer =====
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
@@ -990,11 +1103,14 @@ class RewarderService {
         this.stdPityEnabled = false;
         this.stdPityThreshold = 10;
         this.stdPityEntries = [];
+        this.featuredPityEnabled = false;
+        this.featuredPityEntries = [];
         this.totalRolls = 0;
         this.rewardCounts = new Map();
         this.history = [];
         this.pityInterceptor = null;
         this.stdPityInterceptor = null;
+        this.featuredPityInterceptors = [];
         this.rng = new MathRandomNumberGenerator();
         this.profiles = [];
         this.activeProfileId = "";
@@ -1012,14 +1128,56 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor, stdPityInterceptor } = buildPipeline(this.rewardNodes, this.pityEnabled, this.pityThreshold, targetConfig, this.stdPityEnabled, this.stdPityThreshold, this.resolvedStdPityNodes());
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+            nodes: this.rewardNodes,
+            pityEnabled: this.pityEnabled,
+            pityThreshold: this.pityThreshold,
+            pityTargetConfig: targetConfig,
+            stdPityEnabled: this.stdPityEnabled,
+            stdPityThreshold: this.stdPityThreshold,
+            stdPityNodes: this.resolvedStdPityNodes(),
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredConfigs: this.resolvedFeaturedPityConfigs(),
+        });
         this.pipeline = pipeline;
         this.pityInterceptor = pityInterceptor;
         this.stdPityInterceptor = stdPityInterceptor;
+        this.featuredPityInterceptors = featuredPityInterceptors;
         if (this.pityInterceptor) {
             this.pityTargetId = this.pityInterceptor.targetId;
         }
         this.saveProfileConfig();
+    }
+    /** Resolves featuredPityEntries into FeaturedPityConfig objects for the pipeline. */
+    resolvedFeaturedPityConfigs() {
+        const configs = [];
+        for (const entry of this.featuredPityEntries) {
+            if (!entry.groupId || !entry.featuredId)
+                continue;
+            const group = this.findNode(entry.groupId) ?? null;
+            const featured = this.findNode(entry.featuredId) ?? null;
+            if (group && featured) {
+                configs.push({ entryId: entry.id, threshold: entry.threshold, group, featured });
+            }
+        }
+        return configs;
+    }
+    /**
+     * Removes any featured pity entries whose groupId or featuredId no longer
+     * exists in the reward tree.  Call after any node removal.
+     */
+    pruneInvalidFeaturedPityEntries() {
+        this.featuredPityEntries = this.featuredPityEntries.filter(e => e.groupId !== null && this.findNode(e.groupId) !== undefined &&
+            e.featuredId !== null && this.findNode(e.featuredId) !== undefined);
+    }
+    // ===== Featured Pity Entry CRUD =====
+    addFeaturedPityEntry() {
+        const id = generateFeaturedPityEntryId();
+        this.featuredPityEntries.push({ id, threshold: 2, groupId: null, featuredId: null });
+        return id;
+    }
+    removeFeaturedPityEntry(id) {
+        this.featuredPityEntries = this.featuredPityEntries.filter(e => e.id !== id);
     }
     /** Resolves stdPityEntries into full RewardNodeConfig objects from the active pool. */
     resolvedStdPityNodes() {
@@ -1107,6 +1265,7 @@ class RewarderService {
                 this.rewardNodes.splice(idx, 1);
                 // Clean up any std pity entry referencing this root node.
                 this.stdPityEntries = this.stdPityEntries.filter(e => e.nodeId !== id);
+                this.pruneInvalidFeaturedPityEntries();
                 return;
             }
         }
@@ -1117,6 +1276,7 @@ class RewarderService {
                 const idx = group.children.findIndex(n => n.id === id);
                 if (idx !== -1) {
                     group.children.splice(idx, 1);
+                    this.pruneInvalidFeaturedPityEntries();
                     return;
                 }
             }
@@ -1153,6 +1313,8 @@ class RewarderService {
             stdPityEnabled: this.stdPityEnabled,
             stdPityThreshold: this.stdPityThreshold,
             stdPityEntries: this.stdPityEntries,
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredPityEntries: this.featuredPityEntries,
         };
         storageSaveProfiles(this.profiles);
     }
@@ -1167,6 +1329,7 @@ class RewarderService {
             })),
             pityCounter: this.pityInterceptor?.counter ?? 0,
             stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
+            featuredPityCounters: Object.fromEntries(this.featuredPityInterceptors.map(i => [i.entryId, i.counter])),
         };
         storageSaveStats(this.activeProfileId, stats);
     }
@@ -1192,6 +1355,9 @@ class RewarderService {
                 this.pityInterceptor.setCounter(stats.pityCounter);
             if (this.stdPityInterceptor)
                 this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            for (const i of this.featuredPityInterceptors) {
+                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+            }
         }
         return true;
     }
@@ -1209,6 +1375,8 @@ class RewarderService {
             stdPityEnabled: false,
             stdPityThreshold: 10,
             stdPityEntries: [],
+            featuredPityEnabled: false,
+            featuredPityEntries: [],
         };
         this.profiles.push(profile);
         storageSaveProfiles(this.profiles);
@@ -1244,6 +1412,11 @@ class RewarderService {
                 this.applyStats(stats);
                 if (this.pityInterceptor)
                     this.pityInterceptor.setCounter(stats.pityCounter);
+                if (this.stdPityInterceptor)
+                    this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+                for (const i of this.featuredPityInterceptors) {
+                    i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+                }
             }
             return true;
         }
@@ -1271,6 +1444,8 @@ class RewarderService {
                 stdPityEnabled: false,
                 stdPityThreshold: 10,
                 stdPityEntries: [],
+                featuredPityEnabled: false,
+                featuredPityEntries: [],
             };
             profiles = [firstProfile];
             storageSaveProfiles(profiles);
@@ -1290,6 +1465,9 @@ class RewarderService {
                 this.pityInterceptor.setCounter(stats.pityCounter);
             if (this.stdPityInterceptor)
                 this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            for (const i of this.featuredPityInterceptors) {
+                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+            }
         }
     }
     applyProfile(profile) {
@@ -1301,6 +1479,20 @@ class RewarderService {
         this.stdPityEnabled = profile.stdPityEnabled ?? false;
         this.stdPityThreshold = profile.stdPityThreshold ?? 10;
         this.stdPityEntries = profile.stdPityEntries ?? [];
+        this.featuredPityEnabled = profile.featuredPityEnabled ?? false;
+        // Migrate from old single-entry format if needed.
+        if (profile.featuredPityEntries !== undefined) {
+            this.featuredPityEntries = profile.featuredPityEntries;
+        }
+        else {
+            const legacyGroupId = profile.featuredPityGroupId ?? null;
+            const legacyFeaturedId = profile.featuredPityFeaturedId ?? null;
+            const legacyThreshold = profile.featuredPityThreshold ?? 2;
+            this.featuredPityEntries = (legacyGroupId && legacyFeaturedId)
+                ? [{ id: generateFeaturedPityEntryId(), threshold: legacyThreshold,
+                        groupId: legacyGroupId, featuredId: legacyFeaturedId }]
+                : [];
+        }
     }
     applyStats(stats) {
         this.totalRolls = stats.totalRolls;
@@ -1403,6 +1595,7 @@ class RewarderApp {
         }
         this.bindRewardListEvents();
         this.bindStdPityEvents();
+        this.bindFeaturedPityEvents();
         // Tab navigation
         const tabBar = document.getElementById("tab-bar");
         if (tabBar) {
@@ -1466,6 +1659,8 @@ class RewarderApp {
                 this.updateWheelSegments();
                 this.renderPityTargetPicker();
                 this.renderStdPityPoolEditor();
+                this.renderFeaturedPityGroupPicker();
+                this.renderFeaturedPityFeaturedPicker();
             }
             else if (target.classList.contains("reward-rate-input")) {
                 const raw = parseFloat(target.value);
@@ -1530,6 +1725,7 @@ class RewarderApp {
             this.renderStats();
             this.renderPityProgress();
             this.renderStdPityProgress();
+            this.renderFeaturedPityProgress();
         }
         this.renderHistory();
         this.svc.saveCurrentStats();
@@ -1549,6 +1745,7 @@ class RewarderApp {
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
+        this.renderFeaturedPityProgress();
         this.renderHistory();
         this.svc.saveCurrentStats();
     }
@@ -1596,6 +1793,7 @@ class RewarderApp {
         this.renderStats();
         this.renderPityProgress();
         this.renderStdPityProgress();
+        this.renderFeaturedPityProgress();
         this.renderHistory();
     }
     updateEffectiveRatesInPlace() {
@@ -1616,6 +1814,7 @@ class RewarderApp {
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
         this.renderStdPityConfig();
+        this.renderFeaturedPityConfig();
         this.updateWheelSegments();
     }
     renderRootNode(node) {
@@ -1759,7 +1958,7 @@ class RewarderApp {
         section.style.display = "block";
         const counter = this.svc.pityInterceptor.counter;
         const threshold = this.svc.pityThreshold;
-        const pct = Math.min(100, (counter / threshold) * 100);
+        const pct = computePercentage(counter, threshold);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
         const targetName = this.svc.pityInterceptor.targetName ?? "—";
         const countEl = document.getElementById("pity-count");
@@ -1972,7 +2171,7 @@ class RewarderApp {
         section.style.display = "block";
         const counter = this.svc.stdPityInterceptor.counter;
         const threshold = this.svc.stdPityThreshold;
-        const pct = Math.min(100, (counter / threshold) * 100);
+        const pct = computePercentage(counter, threshold);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
         const countEl = document.getElementById("std-pity-count");
         const thresholdEl = document.getElementById("std-pity-threshold-display");
@@ -1986,7 +2185,197 @@ class RewarderApp {
             barEl.style.backgroundColor = urgency;
         }
     }
+    // ===== Featured Pity =====
+    bindFeaturedPityEvents() {
+        const toggle = document.getElementById("feat-pity-toggle");
+        if (toggle) {
+            toggle.addEventListener("change", () => {
+                this.svc.featuredPityEnabled = toggle.checked;
+                const display = this.svc.featuredPityEnabled ? "block" : "none";
+                const addRow = document.getElementById("feat-pity-add-row");
+                const editor = document.getElementById("feat-pity-entries-editor");
+                if (editor)
+                    editor.style.display = display;
+                if (addRow)
+                    addRow.style.display = display;
+                this.svc.rebuildPipeline();
+                this.renderFeaturedPityProgress();
+            });
+        }
+        const addBtn = document.getElementById("btn-add-feat-pity");
+        if (addBtn) {
+            addBtn.addEventListener("click", () => {
+                this.svc.addFeaturedPityEntry();
+                this.renderFeaturedPityEntries();
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+        }
+        const editor = document.getElementById("feat-pity-entries-editor");
+        if (editor) {
+            editor.addEventListener("click", (e) => {
+                const btn = e.target.closest(".btn-remove-feat-pity-entry");
+                if (!btn)
+                    return;
+                const row = btn.closest(".feat-pity-entry");
+                if (!row)
+                    return;
+                this.svc.removeFeaturedPityEntry(row.dataset.entryId);
+                this.renderFeaturedPityEntries();
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+            editor.addEventListener("change", (e) => {
+                const target = e.target;
+                const row = target.closest(".feat-pity-entry");
+                if (!row)
+                    return;
+                const entry = this.svc.featuredPityEntries.find(en => en.id === row.dataset.entryId);
+                if (!entry)
+                    return;
+                if (target.classList.contains("feat-pity-threshold-input")) {
+                    entry.threshold = Math.max(1, parseInt(target.value) || 1);
+                    target.value = String(entry.threshold);
+                }
+                else if (target.classList.contains("feat-pity-group-sel")) {
+                    entry.groupId = target.value || null;
+                    entry.featuredId = null;
+                    const featSel = row.querySelector(".feat-pity-featured-sel");
+                    if (featSel) {
+                        featSel.innerHTML = this._featuredOptionsHtml(entry.groupId, null);
+                        featSel.disabled = entry.groupId === null;
+                    }
+                }
+                else if (target.classList.contains("feat-pity-featured-sel")) {
+                    entry.featuredId = target.value || null;
+                }
+                else {
+                    return;
+                }
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+        }
+    }
+    _groupOptionsHtml(selectedId) {
+        const groups = this.svc.rewardNodes.filter(n => n.isGroup && n.children.length >= 2);
+        return `<option value="">\u2014 select group \u2014</option>`
+            + groups.map(g => `<option value="${g.id}"${g.id === selectedId ? " selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
+    }
+    _featuredOptionsHtml(groupId, selectedId) {
+        const group = groupId
+            ? this.svc.rewardNodes.find(n => n.id === groupId && n.isGroup)
+            : undefined;
+        if (!group)
+            return `<option value="">\u2014 select group first \u2014</option>`;
+        return `<option value="">\u2014 select featured \u2014</option>`
+            + group.children.map(c => `<option value="${c.id}"${c.id === selectedId ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+    }
+    renderFeaturedPityConfig() {
+        const toggle = document.getElementById("feat-pity-toggle");
+        if (toggle)
+            toggle.checked = this.svc.featuredPityEnabled;
+        const display = this.svc.featuredPityEnabled ? "block" : "none";
+        const addRow = document.getElementById("feat-pity-add-row");
+        const editor = document.getElementById("feat-pity-entries-editor");
+        if (editor)
+            editor.style.display = display;
+        if (addRow)
+            addRow.style.display = display;
+        this.renderFeaturedPityEntries();
+    }
+    renderFeaturedPityEntries() {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container)
+            return;
+        container.innerHTML = this.svc.featuredPityEntries.map(entry => {
+            const groupOpts = this._groupOptionsHtml(entry.groupId);
+            const featuredOpts = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+            const featDisabled = entry.groupId === null ? " disabled" : "";
+            return `
+                <div class="feat-pity-entry" data-entry-id="${entry.id}">
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Every</label>
+                        <input type="number" class="pity-input feat-pity-threshold-input"
+                            value="${entry.threshold}" min="1" max="9999" step="1">
+                        <span class="pity-unit">entries</span>
+                        <button class="btn-icon btn-remove-feat-pity-entry" title="Remove">&#xd7;</button>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Group</label>
+                        <select class="pity-target-select feat-pity-group-sel">${groupOpts}</select>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Featured</label>
+                        <select class="pity-target-select feat-pity-featured-sel"${featDisabled}>${featuredOpts}</select>
+                    </div>
+                </div>`;
+        }).join("");
+    }
+    renderFeaturedPityGroupPicker() {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container)
+            return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row)
+                continue;
+            const sel = row.querySelector(".feat-pity-group-sel");
+            if (sel)
+                sel.innerHTML = this._groupOptionsHtml(entry.groupId);
+        }
+    }
+    renderFeaturedPityFeaturedPicker() {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container)
+            return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row)
+                continue;
+            const sel = row.querySelector(".feat-pity-featured-sel");
+            if (sel) {
+                sel.innerHTML = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+                sel.disabled = entry.groupId === null;
+            }
+        }
+    }
+    renderFeaturedPityProgress() {
+        const container = document.getElementById("feat-pity-progress-container");
+        if (!container)
+            return;
+        const interceptors = this.svc.featuredPityEnabled
+            ? this.svc.featuredPityInterceptors
+            : [];
+        if (interceptors.length === 0) {
+            container.innerHTML = "";
+            return;
+        }
+        container.innerHTML = interceptors.map(interceptor => {
+            const counter = interceptor.counter;
+            const threshold = interceptor.threshold;
+            const pct = computePercentage(counter, threshold);
+            const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+            return `
+                <div class="pity-progress-section">
+                    <div class="pity-header">
+                        <span>Featured: ${escapeHtml(interceptor.featuredName)} (${escapeHtml(interceptor.groupName)})</span>
+                        <span>${counter}&thinsp;/&thinsp;${interceptor.threshold}</span>
+                    </div>
+                    <div class="pity-bar-track">
+                        <div class="pity-bar" style="width:${pct}%;background-color:${urgency}"></div>
+                    </div>
+                </div>`;
+        }).join("");
+    }
 }
+const computePercentage = (counter, threshold) => {
+    const computingThreshold = Math.max(1, threshold - 1);
+    return Math.max(0, Math.min(100, (counter / computingThreshold) * 100));
+};
 document.addEventListener("DOMContentLoaded", () => {
     new RewarderApp().init();
 });

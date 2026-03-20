@@ -12,13 +12,17 @@ class RewarderService {
     stdPityThreshold = 10;
     stdPityEntries:  StandardPityEntry[] = [];
 
+    featuredPityEnabled  = false;
+    featuredPityEntries: FeaturedPityEntry[] = [];
+
     totalRolls   = 0;
     rewardCounts = new Map<string, number>();
     history: RollRecord[] = [];
 
     private pipeline!: RewardPipeline<Reward>;
-    pityInterceptor:    HardPityInterceptor    | null = null;
-    stdPityInterceptor: StandardPityInterceptor | null = null;
+    pityInterceptor:           HardPityInterceptor     | null = null;
+    stdPityInterceptor:        StandardPityInterceptor  | null = null;
+    featuredPityInterceptors:  FeaturedPityInterceptor[]      = [];
     private rng = new MathRandomNumberGenerator();
     private readonly _colorProvider: IRewardColorProvider;
 
@@ -44,22 +48,64 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor, stdPityInterceptor } = buildPipeline(
-            this.rewardNodes,
-            this.pityEnabled,
-            this.pityThreshold,
-            targetConfig,
-            this.stdPityEnabled,
-            this.stdPityThreshold,
-            this.resolvedStdPityNodes(),
-        );
-        this.pipeline           = pipeline;
-        this.pityInterceptor    = pityInterceptor;
-        this.stdPityInterceptor = stdPityInterceptor;
+
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+            nodes:               this.rewardNodes,
+            pityEnabled:         this.pityEnabled,
+            pityThreshold:       this.pityThreshold,
+            pityTargetConfig:    targetConfig,
+            stdPityEnabled:      this.stdPityEnabled,
+            stdPityThreshold:    this.stdPityThreshold,
+            stdPityNodes:        this.resolvedStdPityNodes(),
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredConfigs:     this.resolvedFeaturedPityConfigs(),
+        });
+
+        this.pipeline                = pipeline;
+        this.pityInterceptor         = pityInterceptor;
+        this.stdPityInterceptor      = stdPityInterceptor;
+        this.featuredPityInterceptors = featuredPityInterceptors;
         if (this.pityInterceptor) {
             this.pityTargetId = this.pityInterceptor.targetId;
         }
         this.saveProfileConfig();
+    }
+
+    /** Resolves featuredPityEntries into FeaturedPityConfig objects for the pipeline. */
+    private resolvedFeaturedPityConfigs(): FeaturedPityConfig[] {
+        const configs: FeaturedPityConfig[] = [];
+        for (const entry of this.featuredPityEntries) {
+            if (!entry.groupId || !entry.featuredId) continue;
+            const group    = this.findNode(entry.groupId)    ?? null;
+            const featured = this.findNode(entry.featuredId) ?? null;
+            if (group && featured) {
+                configs.push({ entryId: entry.id, threshold: entry.threshold, group, featured });
+            }
+        }
+        return configs;
+    }
+
+    /**
+     * Removes any featured pity entries whose groupId or featuredId no longer
+     * exists in the reward tree.  Call after any node removal.
+     */
+    pruneInvalidFeaturedPityEntries(): void {
+        this.featuredPityEntries = this.featuredPityEntries.filter(e =>
+            e.groupId    !== null && this.findNode(e.groupId)    !== undefined &&
+            e.featuredId !== null && this.findNode(e.featuredId) !== undefined,
+        );
+    }
+
+    // ===== Featured Pity Entry CRUD =====
+
+    addFeaturedPityEntry(): string {
+        const id = generateFeaturedPityEntryId();
+        this.featuredPityEntries.push({ id, threshold: 2, groupId: null, featuredId: null });
+        return id;
+    }
+
+    removeFeaturedPityEntry(id: string): void {
+        this.featuredPityEntries = this.featuredPityEntries.filter(e => e.id !== id);
     }
 
     /** Resolves stdPityEntries into full RewardNodeConfig objects from the active pool. */
@@ -150,6 +196,7 @@ class RewarderService {
                 this.rewardNodes.splice(idx, 1);
                 // Clean up any std pity entry referencing this root node.
                 this.stdPityEntries = this.stdPityEntries.filter(e => e.nodeId !== id);
+                this.pruneInvalidFeaturedPityEntries();
                 return;
             }
         }
@@ -159,6 +206,7 @@ class RewarderService {
                 const idx = group.children.findIndex(n => n.id === id);
                 if (idx !== -1) {
                     group.children.splice(idx, 1);
+                    this.pruneInvalidFeaturedPityEntries();
                     return;
                 }
             }
@@ -195,9 +243,11 @@ class RewarderService {
             pityThreshold:    this.pityThreshold,
             pityTargetId:     this.pityTargetId,
             nextId:           this.nextId,
-            stdPityEnabled:   this.stdPityEnabled,
-            stdPityThreshold: this.stdPityThreshold,
-            stdPityEntries:   this.stdPityEntries,
+            stdPityEnabled:      this.stdPityEnabled,
+            stdPityThreshold:    this.stdPityThreshold,
+            stdPityEntries:      this.stdPityEntries,
+            featuredPityEnabled: this.featuredPityEnabled,
+            featuredPityEntries: this.featuredPityEntries,
         };
         storageSaveProfiles(this.profiles);
     }
@@ -213,6 +263,9 @@ class RewarderService {
             })),
             pityCounter:    this.pityInterceptor?.counter    ?? 0,
             stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
+            featuredPityCounters: Object.fromEntries(
+                this.featuredPityInterceptors.map(i => [i.entryId, i.counter]),
+            ),
         };
         storageSaveStats(this.activeProfileId, stats);
     }
@@ -239,6 +292,9 @@ class RewarderService {
             this.applyStats(stats);
             if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
             if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            for (const i of this.featuredPityInterceptors) {
+                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+            }
         }
         return true;
     }
@@ -254,9 +310,11 @@ class RewarderService {
             pityThreshold:    90,
             pityTargetId:     null,
             nextId:           1,
-            stdPityEnabled:   false,
-            stdPityThreshold: 10,
-            stdPityEntries:   [],
+            stdPityEnabled:      false,
+            stdPityThreshold:    10,
+            stdPityEntries:      [],
+            featuredPityEnabled: false,
+            featuredPityEntries: [],
         };
         this.profiles.push(profile);
         storageSaveProfiles(this.profiles);
@@ -297,7 +355,11 @@ class RewarderService {
             const stats = storageLoadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
-                if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
+if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
+            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            for (const i of this.featuredPityInterceptors) {
+                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+            }
             }
             return true;
         }
@@ -324,9 +386,11 @@ class RewarderService {
                 pityThreshold:    90,
                 pityTargetId:     null,
                 nextId:           1,
-                stdPityEnabled:   false,
-                stdPityThreshold: 10,
-                stdPityEntries:   [],
+                stdPityEnabled:      false,
+                stdPityThreshold:    10,
+                stdPityEntries:      [],
+                featuredPityEnabled: false,
+                featuredPityEntries: [],
             };
             profiles = [firstProfile];
             storageSaveProfiles(profiles);
@@ -347,6 +411,9 @@ class RewarderService {
             this.applyStats(stats);
             if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
             if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+            for (const i of this.featuredPityInterceptors) {
+                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+            }
         }
     }
 
@@ -359,6 +426,19 @@ class RewarderService {
         this.stdPityEnabled   = profile.stdPityEnabled   ?? false;
         this.stdPityThreshold = profile.stdPityThreshold ?? 10;
         this.stdPityEntries   = profile.stdPityEntries   ?? [];
+        this.featuredPityEnabled = profile.featuredPityEnabled ?? false;
+        // Migrate from old single-entry format if needed.
+        if (profile.featuredPityEntries !== undefined) {
+            this.featuredPityEntries = profile.featuredPityEntries;
+        } else {
+            const legacyGroupId    = (profile as any).featuredPityGroupId    ?? null;
+            const legacyFeaturedId = (profile as any).featuredPityFeaturedId ?? null;
+            const legacyThreshold  = (profile as any).featuredPityThreshold  ?? 2;
+            this.featuredPityEntries = (legacyGroupId && legacyFeaturedId)
+                ? [{ id: generateFeaturedPityEntryId(), threshold: legacyThreshold,
+                     groupId: legacyGroupId, featuredId: legacyFeaturedId }]
+                : [];
+        }
     }
 
     private applyStats(stats: PersistedStats): void {

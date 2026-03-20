@@ -3,6 +3,13 @@ interface StandardPityEntry {
     rate:   number;   // override rate within the pity pool (all entries should sum to 100)
 }
 
+interface FeaturedPityEntry {
+    id:         string;        // stable identity across reloads (used to match persisted counters)
+    threshold:  number;        // non-featured group entries required before a forced featured
+    groupId:    string | null; // the group node that owns the featured reward
+    featuredId: string | null; // the specific featured reward within that group
+}
+
 interface RewardNodeConfig {
     id: string;
     name: string;

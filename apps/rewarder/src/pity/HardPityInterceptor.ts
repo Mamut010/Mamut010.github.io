@@ -1,4 +1,4 @@
-class HardPityInterceptor extends BasePityInterceptor {
+class HardPityInterceptor extends BaseRollCountingPityInterceptor {
     public get targetName(): string { return this._target.name; }
     public get targetId():   string { return this._target.id; }
 

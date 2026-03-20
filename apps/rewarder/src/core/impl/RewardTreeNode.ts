@@ -25,18 +25,22 @@ class RewardTreeNode<TReward> implements IRewardTreeNode<TReward> {
         return [... this._outgoingEdges.keys()];
     }
 
-    public connect(node: IRewardTreeNode<TReward>, weight: number): boolean {
+    public connect(node: IRewardTreeNode<TReward>, weight: number): IRewardTreeEdge<TReward> | undefined {
         if (this._outgoingEdges.has(node)) {
-            return false;
+            return undefined;
         }
 
-        const edge = new RewardTreeEdge(this, node, weight, weight);
+        const edge = new RewardTreeEdge(this, node, weight);
         this._outgoingEdges.set(node, edge);
-        return true;
+        return edge;
     }
 
     public disconnect(node: IRewardTreeNode<TReward>): boolean {
         return this._outgoingEdges.delete(node);
+    }
+
+    public disconnectAll(): void {
+        this._outgoingEdges.clear();
     }
 
     public getConnection(node: IRewardTreeNode<TReward>): IRewardTreeEdge<TReward> | undefined {

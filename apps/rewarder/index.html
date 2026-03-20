@@ -100,6 +100,8 @@
                                     <div class="pity-bar" id="std-pity-bar"></div>
                                 </div>
                             </div>
+                            <!-- Featured Pity progress bars (populated by JS) -->
+                            <div id="feat-pity-progress-container"></div>
                         </div>
 
                         <!-- History -->
@@ -217,12 +219,23 @@
                                 </div>
                             </section>
 
+                            <section class="config-section pity-section">
+                                <div class="pity-toggle-row">
+                                    <h2 class="section-title" style="margin-bottom:0">Featured Pity</h2>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="feat-pity-toggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <!-- Entry list and Add button populated/shown by JS -->
+                                <div id="feat-pity-entries-editor" style="display:none"></div>
+                                <div id="feat-pity-add-row" style="display:none">
+                                    <button id="btn-add-feat-pity" class="btn-add-node">+ Add Featured Pity</button>
+                                </div>
+                            </section>
+
                         </div>
                     </details>
-
-                </div>
-            </div>
-        </div>
 
         <script src="./js/rewarder.js"></script>
     </body>

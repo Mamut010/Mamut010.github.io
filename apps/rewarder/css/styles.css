@@ -539,6 +539,29 @@ details[open] > .config-group-header .config-group-chevron {
 .std-pity-rate-input:not(:disabled):focus { outline: none; border-color: var(--accent); }
 .std-pity-rate-summary { margin-top: 0; }
 
+/* ===== Featured Pity Entries Editor ===== */
+#feat-pity-entries-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75em;
+    margin-bottom: 0.6em;
+}
+.feat-pity-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45em;
+    padding: 0.65em 0.75em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.feat-pity-entry-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    max-width: 340px;
+}
+
 /* ===== Profile Picker ===== */
 .profile-section {
     padding-bottom: 0.8em;

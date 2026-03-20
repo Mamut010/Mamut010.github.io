@@ -98,6 +98,7 @@ class RewarderApp {
 
         this.bindRewardListEvents();
         this.bindStdPityEvents();
+        this.bindFeaturedPityEvents();
 
         // Tab navigation
         const tabBar = document.getElementById("tab-bar");
@@ -159,6 +160,8 @@ class RewarderApp {
                 this.updateWheelSegments();
                 this.renderPityTargetPicker();
                 this.renderStdPityPoolEditor();
+                this.renderFeaturedPityGroupPicker();
+                this.renderFeaturedPityFeaturedPicker();
             } else if (target.classList.contains("reward-rate-input")) {
                 const raw = parseFloat((target as HTMLInputElement).value);
                 node.rate = isNaN(raw) ? 0 : Math.max(0, raw);
@@ -225,6 +228,7 @@ class RewarderApp {
             this.renderStats();
             this.renderPityProgress();
             this.renderStdPityProgress();
+            this.renderFeaturedPityProgress();
         }
 
         this.renderHistory();
@@ -246,6 +250,7 @@ class RewarderApp {
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
+        this.renderFeaturedPityProgress();
         this.renderHistory();
         this.svc.saveCurrentStats();
     }
@@ -294,6 +299,7 @@ class RewarderApp {
         this.renderStats();
         this.renderPityProgress();
         this.renderStdPityProgress();
+        this.renderFeaturedPityProgress();
         this.renderHistory();
     }
 
@@ -313,6 +319,7 @@ class RewarderApp {
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
         this.renderStdPityConfig();
+        this.renderFeaturedPityConfig();
         this.updateWheelSegments();
     }
 
@@ -466,7 +473,7 @@ class RewarderApp {
 
         const counter   = this.svc.pityInterceptor.counter;
         const threshold = this.svc.pityThreshold;
-        const pct     = Math.min(100, (counter / threshold) * 100);
+        const pct     = computePercentage(counter, threshold);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
 
         const targetName = this.svc.pityInterceptor.targetName ?? "—";
@@ -685,7 +692,7 @@ class RewarderApp {
 
         const counter   = this.svc.stdPityInterceptor.counter;
         const threshold = this.svc.stdPityThreshold;
-        const pct       = Math.min(100, (counter / threshold) * 100);
+        const pct       = computePercentage(counter, threshold);
         const urgency   = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
 
         const countEl     = document.getElementById("std-pity-count");
@@ -699,6 +706,200 @@ class RewarderApp {
             barEl.style.backgroundColor = urgency;
         }
     }
+
+    // ===== Featured Pity =====
+
+    private bindFeaturedPityEvents(): void {
+        const toggle = document.getElementById("feat-pity-toggle") as HTMLInputElement | null;
+        if (toggle) {
+            toggle.addEventListener("change", () => {
+                this.svc.featuredPityEnabled = toggle.checked;
+                const display = this.svc.featuredPityEnabled ? "block" : "none";
+                const addRow  = document.getElementById("feat-pity-add-row");
+                const editor  = document.getElementById("feat-pity-entries-editor");
+                if (editor) editor.style.display = display;
+                if (addRow) addRow.style.display  = display;
+                this.svc.rebuildPipeline();
+                this.renderFeaturedPityProgress();
+            });
+        }
+
+        const addBtn = document.getElementById("btn-add-feat-pity");
+        if (addBtn) {
+            addBtn.addEventListener("click", () => {
+                this.svc.addFeaturedPityEntry();
+                this.renderFeaturedPityEntries();
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+        }
+
+        const editor = document.getElementById("feat-pity-entries-editor");
+        if (editor) {
+            editor.addEventListener("click", (e) => {
+                const btn = (e.target as HTMLElement).closest(".btn-remove-feat-pity-entry");
+                if (!btn) return;
+                const row = (btn as HTMLElement).closest<HTMLElement>(".feat-pity-entry");
+                if (!row) return;
+                this.svc.removeFeaturedPityEntry(row.dataset.entryId!);
+                this.renderFeaturedPityEntries();
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+
+            editor.addEventListener("change", (e) => {
+                const target = e.target as HTMLElement;
+                const row = target.closest<HTMLElement>(".feat-pity-entry");
+                if (!row) return;
+                const entry = this.svc.featuredPityEntries.find(en => en.id === row.dataset.entryId);
+                if (!entry) return;
+
+                if (target.classList.contains("feat-pity-threshold-input")) {
+                    entry.threshold = Math.max(1, parseInt((target as HTMLInputElement).value) || 1);
+                    (target as HTMLInputElement).value = String(entry.threshold);
+                } else if (target.classList.contains("feat-pity-group-sel")) {
+                    entry.groupId    = (target as HTMLSelectElement).value || null;
+                    entry.featuredId = null;
+                    const featSel = row.querySelector<HTMLSelectElement>(".feat-pity-featured-sel");
+                    if (featSel) {
+                        featSel.innerHTML = this._featuredOptionsHtml(entry.groupId, null);
+                        featSel.disabled  = entry.groupId === null;
+                    }
+                } else if (target.classList.contains("feat-pity-featured-sel")) {
+                    entry.featuredId = (target as HTMLSelectElement).value || null;
+                } else {
+                    return;
+                }
+
+                this.svc.rebuildPipeline();
+                this.svc.saveProfileConfig();
+                this.renderFeaturedPityProgress();
+            });
+        }
+    }
+
+    private _groupOptionsHtml(selectedId: string | null): string {
+        const groups = this.svc.rewardNodes.filter(n => n.isGroup && n.children.length >= 2);
+        return `<option value="">\u2014 select group \u2014</option>`
+            + groups.map(g =>
+                `<option value="${g.id}"${g.id === selectedId ? " selected" : ""}>${escapeHtml(g.name)}</option>`
+            ).join("");
+    }
+
+    private _featuredOptionsHtml(groupId: string | null, selectedId: string | null | undefined): string {
+        const group = groupId
+            ? this.svc.rewardNodes.find(n => n.id === groupId && n.isGroup)
+            : undefined;
+        if (!group) return `<option value="">\u2014 select group first \u2014</option>`;
+        return `<option value="">\u2014 select featured \u2014</option>`
+            + group.children.map(c =>
+                `<option value="${c.id}"${c.id === selectedId ? " selected" : ""}>${escapeHtml(c.name)}</option>`
+            ).join("");
+    }
+
+    private renderFeaturedPityConfig(): void {
+        const toggle = document.getElementById("feat-pity-toggle") as HTMLInputElement | null;
+        if (toggle) toggle.checked = this.svc.featuredPityEnabled;
+
+        const display = this.svc.featuredPityEnabled ? "block" : "none";
+        const addRow  = document.getElementById("feat-pity-add-row");
+        const editor  = document.getElementById("feat-pity-entries-editor");
+        if (editor) editor.style.display = display;
+        if (addRow) addRow.style.display  = display;
+
+        this.renderFeaturedPityEntries();
+    }
+
+    private renderFeaturedPityEntries(): void {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        container.innerHTML = this.svc.featuredPityEntries.map(entry => {
+            const groupOpts    = this._groupOptionsHtml(entry.groupId);
+            const featuredOpts = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+            const featDisabled = entry.groupId === null ? " disabled" : "";
+            return `
+                <div class="feat-pity-entry" data-entry-id="${entry.id}">
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Every</label>
+                        <input type="number" class="pity-input feat-pity-threshold-input"
+                            value="${entry.threshold}" min="1" max="9999" step="1">
+                        <span class="pity-unit">entries</span>
+                        <button class="btn-icon btn-remove-feat-pity-entry" title="Remove">&#xd7;</button>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Group</label>
+                        <select class="pity-target-select feat-pity-group-sel">${groupOpts}</select>
+                    </div>
+                    <div class="feat-pity-entry-row">
+                        <label class="pity-label">Featured</label>
+                        <select class="pity-target-select feat-pity-featured-sel"${featDisabled}>${featuredOpts}</select>
+                    </div>
+                </div>`;
+        }).join("");
+    }
+
+    private renderFeaturedPityGroupPicker(): void {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector<HTMLElement>(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row) continue;
+            const sel = row.querySelector<HTMLSelectElement>(".feat-pity-group-sel");
+            if (sel) sel.innerHTML = this._groupOptionsHtml(entry.groupId);
+        }
+    }
+
+    private renderFeaturedPityFeaturedPicker(): void {
+        const container = document.getElementById("feat-pity-entries-editor");
+        if (!container) return;
+        for (const entry of this.svc.featuredPityEntries) {
+            const row = container.querySelector<HTMLElement>(`.feat-pity-entry[data-entry-id="${entry.id}"]`);
+            if (!row) continue;
+            const sel = row.querySelector<HTMLSelectElement>(".feat-pity-featured-sel");
+            if (sel) {
+                sel.innerHTML = this._featuredOptionsHtml(entry.groupId, entry.featuredId);
+                sel.disabled  = entry.groupId === null;
+            }
+        }
+    }
+
+    private renderFeaturedPityProgress(): void {
+        const container = document.getElementById("feat-pity-progress-container");
+        if (!container) return;
+
+        const interceptors = this.svc.featuredPityEnabled
+            ? this.svc.featuredPityInterceptors
+            : [];
+
+        if (interceptors.length === 0) {
+            container.innerHTML = "";
+            return;
+        }
+
+        container.innerHTML = interceptors.map(interceptor => {
+            const counter   = interceptor.counter;
+            const threshold = interceptor.threshold;
+            const pct       = computePercentage(counter, threshold);
+            const urgency   = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+            return `
+                <div class="pity-progress-section">
+                    <div class="pity-header">
+                        <span>Featured: ${escapeHtml(interceptor.featuredName)} (${escapeHtml(interceptor.groupName)})</span>
+                        <span>${counter}&thinsp;/&thinsp;${interceptor.threshold}</span>
+                    </div>
+                    <div class="pity-bar-track">
+                        <div class="pity-bar" style="width:${pct}%;background-color:${urgency}"></div>
+                    </div>
+                </div>`;
+        }).join("");
+    }
+}
+
+const computePercentage = (counter: number, threshold: number): number => {
+    const computingThreshold = Math.max(1, threshold - 1);
+    return Math.max(0, Math.min(100, (counter / computingThreshold) * 100));
 }
 
 document.addEventListener("DOMContentLoaded", () => {
