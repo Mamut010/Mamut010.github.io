@@ -16,10 +16,94 @@
                 <div class="header-spacer"></div>
             </header>
 
-            <div class="app-layout">
+            <!-- ===== Tab Bar ===== -->
+            <div class="tab-bar" id="tab-bar" role="tablist">
+                <button class="tab-btn is-active" data-tab="play"   role="tab" aria-selected="true">Play</button>
+                <button class="tab-btn"           data-tab="config" role="tab" aria-selected="false">Config</button>
+            </div>
 
-                <!-- ===== Config Sidebar ===== -->
-                <aside class="config-panel">
+            <!-- ===== Play Tab ===== -->
+            <div class="tab-panel" id="tab-play" role="tabpanel">
+                <div class="play-layout">
+
+                    <!-- Primary column: wheel + result + roll controls -->
+                    <div class="play-primary">
+
+                        <!-- Latest Result -->
+                        <div class="result-section" id="latest-result">
+                            <!-- Wheel view -->
+                            <div id="wheel-view" class="wheel-view">
+                                <div class="wheel-wrap">
+                                    <canvas id="wheel-canvas" width="300" height="300"></canvas>
+                                </div>
+                                <div class="wheel-controls">
+                                    <div class="wheel-mode-selector" id="wheel-mode-selector" role="group" aria-label="Spin mode">
+                                        <button class="btn btn-mode is-active" data-mode="normal">Normal</button>
+                                        <button class="btn btn-mode" data-mode="accelerate">Fast</button>
+                                        <button class="btn btn-mode" data-mode="skip">Skip</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Card view (result / idle message) -->
+                            <div id="card-view" class="card-view">
+                                <div class="idle-msg">Roll to get started!</div>
+                            </div>
+                        </div>
+
+                        <!-- Roll buttons -->
+                        <section class="config-section">
+                            <div class="roll-buttons">
+                                <button class="btn btn-roll"       id="btn-roll">Roll ×1</button>
+                                <button class="btn btn-roll-multi" id="btn-roll-10">Roll ×10</button>
+                                <button class="btn btn-roll-multi" id="btn-roll-100">Roll ×100</button>
+                            </div>
+                            <button class="btn btn-reset" id="btn-reset">Reset Stats</button>
+                        </section>
+
+                    </div>
+
+                    <!-- Secondary column: stats + history -->
+                    <div class="play-secondary">
+
+                        <!-- Statistics -->
+                        <div class="stats-section">
+                            <div class="stats-header">
+                                <h2 class="section-title" style="margin-bottom:0">Statistics</h2>
+                                <span class="total-badge">Total: <span id="stat-total">0</span> rolls</span>
+                            </div>
+                            <div id="stats-rows">
+                                <!-- populated by JS -->
+                            </div>
+                            <!-- Pity progress bar -->
+                            <div class="pity-progress-section" id="pity-section">
+                                <div class="pity-header">
+                                    <span>Pity: <span id="pity-target-name">—</span></span>
+                                    <span>
+                                        <span id="pity-count">0</span> /
+                                        <span id="pity-threshold-display">90</span>
+                                    </span>
+                                </div>
+                                <div class="pity-bar-track">
+                                    <div class="pity-bar" id="pity-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- History -->
+                        <div class="history-section">
+                            <h2 class="section-title">History</h2>
+                            <div class="history-log" id="history-log">
+                                <div class="history-empty">No rolls yet</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Config Tab ===== -->
+            <div class="tab-panel is-hidden" id="tab-config" role="tabpanel">
+                <div class="config-layout">
 
                     <section class="config-section profile-section">
                         <div class="profile-row">
@@ -75,75 +159,7 @@
                         </div>
                     </section>
 
-                    <section class="config-section">
-                        <div class="roll-buttons">
-                            <button class="btn btn-roll"       id="btn-roll">Roll ×1</button>
-                            <button class="btn btn-roll-multi" id="btn-roll-10">Roll ×10</button>
-                            <button class="btn btn-roll-multi" id="btn-roll-100">Roll ×100</button>
-                        </div>
-                        <button class="btn btn-reset" id="btn-reset">Reset Stats</button>
-                    </section>
-
-                </aside>
-
-                <!-- ===== Main Content ===== -->
-                <main class="main-content">
-
-                    <!-- Latest Result -->
-                    <div class="result-section" id="latest-result">
-                        <!-- Wheel view (always visible) -->
-                        <div id="wheel-view" class="wheel-view">
-                            <div class="wheel-wrap">
-                                <canvas id="wheel-canvas" width="300" height="300"></canvas>
-                            </div>
-                            <div class="wheel-controls">
-                                <div class="wheel-mode-selector" id="wheel-mode-selector" role="group" aria-label="Spin mode">
-                                    <button class="btn btn-mode is-active" data-mode="normal">Normal</button>
-                                    <button class="btn btn-mode" data-mode="accelerate">Fast</button>
-                                    <button class="btn btn-mode" data-mode="skip">Skip</button>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Card view (result / idle message, always visible below) -->
-                        <div id="card-view" class="card-view">
-                            <div class="idle-msg">Roll to get started!</div>
-                        </div>
-                    </div>
-
-                    <!-- Statistics -->
-                    <div class="stats-section">
-                        <div class="stats-header">
-                            <h2 class="section-title" style="margin-bottom:0">Statistics</h2>
-                            <span class="total-badge">Total: <span id="stat-total">0</span> rolls</span>
-                        </div>
-                        <div id="stats-rows">
-                            <!-- populated by JS -->
-                        </div>
-
-                        <!-- Pity progress bar -->
-                        <div class="pity-progress-section" id="pity-section">
-                            <div class="pity-header">
-                                <span>Pity: <span id="pity-target-name">—</span></span>
-                                <span>
-                                    <span id="pity-count">0</span> /
-                                    <span id="pity-threshold-display">90</span>
-                                </span>
-                            </div>
-                            <div class="pity-bar-track">
-                                <div class="pity-bar" id="pity-bar"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- History -->
-                    <div class="history-section">
-                        <h2 class="section-title">History</h2>
-                        <div class="history-log" id="history-log">
-                            <div class="history-empty">No rolls yet</div>
-                        </div>
-                    </div>
-
-                </main>
+                </div>
             </div>
         </div>
 

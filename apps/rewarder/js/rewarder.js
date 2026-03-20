@@ -1268,6 +1268,19 @@ class RewarderApp {
             });
         }
         this.bindRewardListEvents();
+        // Tab navigation
+        const tabBar = document.getElementById("tab-bar");
+        if (tabBar) {
+            tabBar.addEventListener("click", (e) => {
+                const btn = e.target.closest(".tab-btn");
+                if (!btn?.dataset.tab)
+                    return;
+                tabBar.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("is-active"));
+                btn.classList.add("is-active");
+                document.querySelectorAll(".tab-panel").forEach(p => p.classList.add("is-hidden"));
+                document.getElementById(`tab-${btn.dataset.tab}`)?.classList.remove("is-hidden");
+            });
+        }
     }
     bindRewardListEvents() {
         const list = document.getElementById("reward-list");
