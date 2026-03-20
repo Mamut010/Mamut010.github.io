@@ -378,6 +378,505 @@ function storageDeleteStats(profileId) {
 function generateProfileId() {
     return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
 }
+// ===== Wheel Drawer =====
+/** Canvas 2D implementation of ISpinningWheelDrawer. */
+class CanvasWheelDrawer {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext("2d");
+    }
+    draw(rotation, segments, segAngles) {
+        const { canvas, ctx } = this;
+        const W = canvas.width;
+        const H = canvas.height;
+        const cx = W / 2;
+        const cy = H / 2;
+        const r = Math.min(cx, cy) - 18; // leave room for the pointer above the wheel
+        ctx.clearRect(0, 0, W, H);
+        if (segments.length === 0) {
+            // Empty placeholder ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+            ctx.strokeStyle = "#2a2a5a";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            this.drawPointer(cx, cy, r);
+            return;
+        }
+        const offset = -Math.PI / 2; // rotate so angle 0 points to the top
+        // ── Filled segments ───────────────────────────────────────────────────
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const angles = segAngles[i];
+            const startA = angles.start + rotation + offset;
+            const endA = startA + angles.sweep;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, r, startA, endA);
+            ctx.closePath();
+            ctx.fillStyle = seg.borderColor || "#334155";
+            ctx.fill();
+            // Subtle sheen so dark colours remain distinguishable
+            ctx.fillStyle = "rgba(255,255,255,0.06)";
+            ctx.fill();
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        // ── Text labels ───────────────────────────────────────────────────────
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const angles = segAngles[i];
+            const midA = angles.mid + rotation + offset;
+            const txtR = r * 0.62;
+            const arcLen = angles.sweep * txtR; // arc length at label radius
+            // Font size adapts to canvas size and available arc length
+            const fontSize = Math.max(8, Math.min(13, r * 0.09, arcLen * 0.45));
+            const maxChars = Math.floor(arcLen / (fontSize * 0.62));
+            if (maxChars < 1)
+                continue;
+            let label = seg.name;
+            if (label.length > maxChars) {
+                label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
+            }
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(midA);
+            ctx.translate(txtR, 0);
+            ctx.font = `bold ${fontSize}px "clear sans", Arial, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(label, 0, 0);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+        // ── Outer ring ────────────────────────────────────────────────────────
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#4a4a8a";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // ── Center cap ────────────────────────────────────────────────────────
+        const capR = r * 0.10;
+        ctx.beginPath();
+        ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
+        ctx.fillStyle = "#0f172a";
+        ctx.fill();
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        this.drawPointer(cx, cy, r);
+    }
+    drawPointer(cx, cy, r) {
+        const ctx = this.ctx;
+        const tipY = cy - r - 2; // tip just above the outer ring
+        const baseY = tipY - 13; // base of the triangle
+        ctx.beginPath();
+        ctx.moveTo(cx, tipY);
+        ctx.lineTo(cx - 9, baseY);
+        ctx.lineTo(cx + 9, baseY);
+        ctx.closePath();
+        ctx.shadowColor = "rgba(192,132,252,0.7)";
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = "#c084fc";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+// ===== Wheel Spin Animator =====
+/**
+ * Unified single-pass animator.
+ *
+ * When a correctionDelta is present (overshoot / undershoot), the position is
+ * computed as a blend of two curves that run simultaneously over the full
+ * duration — giving one continuous, smooth deceleration with the
+ * overshoot/undershoot baked in near the end rather than as a separate bounce:
+ *
+ *   basePos(t)    = lerp(from, overshootTarget, easeOutQuart(t))
+ *   blendWeight(t) = smoothstep(phase1Frac → 1)          // 0 before tail, 1 at end
+ *   position(t)   = lerp(basePos(t), finalRotation, blendWeight(t))
+ *
+ * The overshootTarget = finalRotation + correctionDelta, so the base curve
+ * naturally drifts past (or short of) the target.  The blend weight then
+ * smoothly pulls the wheel back to exactly finalRotation by t = 1.
+ * Because both curves are active at all times the motion is fully continuous
+ * with no abrupt velocity change between "phases".
+ */
+class TwoPhaseWheelAnimator {
+    constructor() {
+        this.currentRotation = 0;
+        this.spinFromRotation = 0;
+        this.finalRotation = 0;
+        this.overshootTarget = null;
+        this.startTime = 0;
+        this.totalDuration = 0;
+        this.blendStart = 0; // t-fraction where correction blend begins
+        this.accelCapMs = 0;
+        this.rafId = null;
+        this.resolveSpinPromise = null;
+        this.onFrame = null;
+    }
+    get isSpinning() { return this.rafId !== null; }
+    start(params, onFrame) {
+        // Cancel any in-flight animation, resolving the old promise immediately.
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+        const oldResolve = this.resolveSpinPromise;
+        this.resolveSpinPromise = null;
+        this.onFrame = null;
+        oldResolve?.();
+        this.onFrame = onFrame;
+        this.accelCapMs = params.accelCapMs;
+        this.spinFromRotation = params.fromRotation;
+        this.currentRotation = params.fromRotation;
+        this.finalRotation = params.finalRotation;
+        this.totalDuration = params.normalDuration;
+        if (params.correctionDelta != null && params.correctionDelta !== 0) {
+            this.overshootTarget = params.finalRotation + params.correctionDelta;
+            this.blendStart = params.phase1Frac;
+        }
+        else {
+            this.overshootTarget = null;
+            this.blendStart = 1;
+        }
+        this.startTime = performance.now();
+        return new Promise(resolve => {
+            this.resolveSpinPromise = resolve;
+            this.scheduleFrame();
+        });
+    }
+    accelerate() {
+        if (this.rafId === null)
+            return;
+        const elapsed = performance.now() - this.startTime;
+        if (elapsed >= this.totalDuration)
+            return;
+        // Rebase from current visual position, dropping correction.
+        this.overshootTarget = null;
+        this.blendStart = 1;
+        this.spinFromRotation = this.currentRotation;
+        this.startTime = performance.now();
+        this.totalDuration = this.accelCapMs;
+    }
+    skip() {
+        if (this.rafId === null)
+            return;
+        cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+        this.finishSpin();
+    }
+    // ── Animation loop ────────────────────────────────────────────────────────
+    scheduleFrame() {
+        this.rafId = requestAnimationFrame(() => this.frame());
+    }
+    frame() {
+        const elapsed = performance.now() - this.startTime;
+        if (elapsed >= this.totalDuration) {
+            this.finishSpin();
+            return;
+        }
+        const t = elapsed / this.totalDuration;
+        this.currentRotation = this.computePosition(t);
+        this.onFrame?.();
+        this.scheduleFrame();
+    }
+    /**
+     * Single unified position function.
+     * - Without correction: pure ease-out-quart from `spinFromRotation` to `finalRotation`.
+     * - With correction: ease-out-quart aims at `overshootTarget` while a smoothstep
+     *   blend (active only in the tail window [blendStart, 1]) gradually steers the
+     *   position back to `finalRotation`.  All in one continuous pass.
+     */
+    computePosition(t) {
+        const baseTarget = this.overshootTarget ?? this.finalRotation;
+        const basePos = this.spinFromRotation + this.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        if (this.overshootTarget == null)
+            return basePos;
+        // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
+        const blend = this.smoothstepTail(t, this.blendStart);
+        // Lerp between base (which drifts past/short of final) and exact final.
+        return basePos + blend * (this.finalRotation - basePos);
+    }
+    finishSpin() {
+        this.currentRotation = this.finalRotation;
+        this.overshootTarget = null;
+        this.rafId = null;
+        this.onFrame?.();
+        this.onFrame = null;
+        const resolve = this.resolveSpinPromise;
+        this.resolveSpinPromise = null;
+        resolve?.();
+    }
+    // ── Easing / math helpers ─────────────────────────────────────────────────
+    easeOutQuart(t) {
+        return 1 - Math.pow(1 - Math.min(t, 1), 4);
+    }
+    /**
+     * Smoothstep that maps [start, 1] → [0, 1] and is 0 for t ≤ start.
+     * Used to define the correction blend window.
+     */
+    smoothstepTail(t, start) {
+        if (t <= start)
+            return 0;
+        const u = (t - start) / (1 - start); // remap to [0, 1]
+        return u * u * (3 - 2 * u); // classic smoothstep
+    }
+}
+// ===== Wheel Spin Mode (Strategy Pattern) =====
+class NormalSpinStrategy {
+    constructor() {
+        this.id = "normal";
+        this.label = "Normal";
+    }
+    execute(wheel, targetIndex) {
+        return wheel.spin(targetIndex, { modeId: this.id });
+    }
+}
+class AccelerateSpinStrategy {
+    constructor() {
+        this.id = "accelerate";
+        this.label = "⚡ Fast";
+    }
+    execute(wheel, targetIndex) {
+        const p = wheel.spin(targetIndex, { modeId: this.id });
+        wheel.accelerate();
+        return p;
+    }
+}
+class SkipSpinStrategy {
+    constructor() {
+        this.id = "skip";
+        this.label = "⏭ Skip";
+    }
+    execute(wheel, targetIndex) {
+        const p = wheel.spin(targetIndex, { modeId: this.id });
+        wheel.skip();
+        return p;
+    }
+}
+class WheelSpinModeFactory {
+    constructor() {
+        this.registry = new Map([
+            ["normal", new NormalSpinStrategy()],
+            ["accelerate", new AccelerateSpinStrategy()],
+            ["skip", new SkipSpinStrategy()],
+        ]);
+    }
+    create(id) {
+        const strategy = this.registry.get(id);
+        if (!strategy)
+            throw new Error(`Unknown spin mode: ${id}`);
+        return strategy;
+    }
+    allModes() {
+        return [...this.registry.values()];
+    }
+}
+// ===== Spinning Angle Calculator (Strategy Pattern) =====
+// ── Concrete calculators ──────────────────────────────────────────────────────
+/** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
+class NaturalAngleCalculator {
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
+        const margin = sweep * 0.10;
+        const TAU = 2 * Math.PI;
+        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
+        return { landingAngle: ((landingAngle % TAU) + TAU) % TAU };
+    }
+}
+/**
+ * The wheel spins slightly past the reward section, then eases back in.
+ *
+ * More rotation → lower wheel-space angle under pointer, so the peak
+ * pointer position is landingAngle − correctionDelta.  We intentionally
+ * make that cross the trailing edge (start) by a small gap so the pointer
+ * briefly visits the neighbouring segment before returning.
+ */
+class OvershootAngleCalculator {
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
+        const TAU = 2 * Math.PI;
+        // Landing sits close to the trailing edge (start) so the correction
+        // needed to cross it is as small as possible.
+        // Cap distInside so large segments don't push correctionDelta too high.
+        const distInside = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = start + distInside;
+        // How far past the trailing edge the pointer should briefly appear.
+        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = distInside + extraGap; // always crosses start
+        return {
+            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            correctionDelta,
+        };
+    }
+}
+/**
+ * The wheel stops just before the reward section, then creeps in.
+ *
+ * correctionDelta is negative, so the peak pointer position is
+ * landingAngle + |correctionDelta|, which crosses the leading edge
+ * (start + sweep) so the pointer briefly sits in the preceding segment.
+ */
+class UndershootAngleCalculator {
+    calculate({ targetIndex, segAngles }) {
+        const { start, sweep } = segAngles[targetIndex];
+        const TAU = 2 * Math.PI;
+        // Landing sits close to the leading edge (start + sweep).
+        const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = start + sweep - distFromLeading;
+        // How far past the leading edge the pointer should briefly appear.
+        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const correctionDelta = -(distFromLeading + extraGap); // always crosses start+sweep
+        return {
+            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            correctionDelta,
+        };
+    }
+}
+// ── Factory ───────────────────────────────────────────────────────────────────
+/**
+ * Picks a calculator using weighted random selection.
+ * - skip mode: always Natural (animation is instant anyway).
+ * - accelerate mode: mostly Natural, occasional Overshoot.
+ * - normal mode: mix of all three for varied feel.
+ */
+class WeightedRandomCalculatorFactory {
+    create(context) {
+        if (context.modeId === "skip")
+            return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        const pool = context.modeId === "accelerate"
+            ? WeightedRandomCalculatorFactory.ACCEL_POOL
+            : WeightedRandomCalculatorFactory.NORMAL_POOL;
+        const items = pool.map(([calc]) => calc);
+        const weights = pool.map(([, w]) => w);
+        return Collections.randomItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+    }
+}
+WeightedRandomCalculatorFactory.NORMAL_POOL = [
+    [new NaturalAngleCalculator(), 65],
+    [new OvershootAngleCalculator(), 20],
+    [new UndershootAngleCalculator(), 15],
+];
+WeightedRandomCalculatorFactory.ACCEL_POOL = [
+    [new NaturalAngleCalculator(), 80],
+    [new OvershootAngleCalculator(), 20],
+];
+WeightedRandomCalculatorFactory.NATURAL_ONLY = new NaturalAngleCalculator();
+// ===== Wheel Spinner =====
+class DefaultWheelSpinner {
+    constructor(animator, calculatorFactory) {
+        this.animator = animator;
+        this.calculatorFactory = calculatorFactory;
+    }
+    spin(targetIndex, context, segments, segAngles, onFrame) {
+        const TAU = 2 * Math.PI;
+        const calculator = this.calculatorFactory.create(context);
+        const landing = calculator.calculate({ targetIndex, segments, segAngles });
+        // Compute how much to rotate so landing.landingAngle faces the pointer at top.
+        // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
+        const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
+        const currentNorm = ((this.animator.currentRotation % TAU) + TAU) % TAU;
+        let delta = targetRot - currentNorm;
+        if (delta <= 0)
+            delta += TAU;
+        delta += DefaultWheelSpinner.MIN_SPINS * TAU;
+        const params = {
+            fromRotation: this.animator.currentRotation,
+            finalRotation: this.animator.currentRotation + delta,
+            correctionDelta: landing.correctionDelta ?? null,
+            normalDuration: DefaultWheelSpinner.NORMAL_DURATION,
+            phase1Frac: DefaultWheelSpinner.PHASE1_FRAC,
+            accelCapMs: DefaultWheelSpinner.ACCEL_CAP_MS,
+        };
+        return this.animator.start(params, onFrame);
+    }
+    accelerate() { this.animator.accelerate(); }
+    skip() { this.animator.skip(); }
+}
+// ── Timing defaults ────────────────────────────────────────────────────────
+DefaultWheelSpinner.NORMAL_DURATION = 4000; // ms for a full normal spin
+DefaultWheelSpinner.ACCEL_CAP_MS = 900; // max remaining ms after accelerate()
+DefaultWheelSpinner.MIN_SPINS = 6; // minimum full rotations before stopping
+DefaultWheelSpinner.PHASE1_FRAC = 0.85; // t-fraction at which the correction blend begins (wider window → slower, more readable settle)
+// ===== Spinning Wheel (Orchestrator) =====
+/**
+ * Orchestrates the drawer, animator, and spinner to present a complete
+ * spinning-wheel widget.  This class owns the segment data model and wires
+ * the three subcomponents together, but delegates all drawing, animation, and
+ * spin-target computation to them.
+ */
+class SpinningWheel {
+    constructor(drawer, animator, spinner) {
+        this.segments = [];
+        this.segAngles = [];
+        this.drawer = drawer;
+        this.animator = animator;
+        this.spinner = spinner;
+        this.redraw();
+    }
+    // ===== Public API =====
+    setSegments(segments) {
+        this.segments = segments;
+        this.segAngles = this.computeAngles(segments);
+        if (!this.animator.isSpinning)
+            this.redraw();
+    }
+    findSegmentIndex(rewardId) {
+        const idx = this.segments.findIndex(s => s.id === rewardId);
+        return idx >= 0 ? idx : 0;
+    }
+    spin(targetIndex, context) {
+        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
+    }
+    accelerate() { this.spinner.accelerate(); }
+    skip() { this.spinner.skip(); }
+    // ===== Helpers =====
+    redraw() {
+        this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
+    }
+    computeAngles(segs) {
+        if (segs.length === 0)
+            return [];
+        const TAU = 2 * Math.PI;
+        const total = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
+        // Compute visual fractions with a minimum floor so tiny segments stay visible.
+        // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
+        // Iterate until stable (convergence typically takes 1-2 passes).
+        const frac = segs.map(s => s.weight / total);
+        const MIN = SpinningWheel.MIN_SEG_FRAC;
+        for (let iter = 0; iter < 8; iter++) {
+            const smallIdx = frac.reduce((acc, f, i) => { if (f < MIN)
+                acc.push(i); return acc; }, []);
+            if (smallIdx.length === 0)
+                break;
+            const reserved = smallIdx.length * MIN;
+            if (reserved >= 1) {
+                frac.fill(1 / segs.length);
+                break;
+            } // pathological: equal split
+            const largeTotal = frac.reduce((s, f, i) => s + (frac[i] < MIN ? 0 : f), 0);
+            const scale = (1 - reserved) / largeTotal;
+            for (let i = 0; i < frac.length; i++) {
+                frac[i] = frac[i] < MIN ? MIN : frac[i] * scale;
+            }
+        }
+        const result = [];
+        let cum = 0;
+        for (let i = 0; i < segs.length; i++) {
+            const start = cum * TAU;
+            const sweep = frac[i] * TAU;
+            result.push({ start, mid: start + sweep / 2, sweep });
+            cum += frac[i];
+        }
+        return result;
+    }
+}
+SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10°)
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
@@ -678,9 +1177,18 @@ class RewarderApp {
     constructor() {
         this.svc = new RewarderService();
         this.isRolling = false;
+        // ── Composition root ─────────────────────────────────────────────────────
+        this.spinModeFactory = new WheelSpinModeFactory();
+        this.calculatorFactory = new WeightedRandomCalculatorFactory();
     }
     init() {
         this.svc.init();
+        this.spinStrategy = this.spinModeFactory.create("normal");
+        const canvas = document.getElementById("wheel-canvas");
+        const drawer = new CanvasWheelDrawer(canvas);
+        const animator = new TwoPhaseWheelAnimator();
+        const spinner = new DefaultWheelSpinner(animator, this.calculatorFactory);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -710,6 +1218,23 @@ class RewarderApp {
         document.getElementById("btn-roll-10").addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100").addEventListener("click", () => this.doRolls(100));
         document.getElementById("btn-reset").addEventListener("click", () => this.resetStats());
+        const modeSel = document.getElementById("wheel-mode-selector");
+        if (modeSel) {
+            modeSel.addEventListener("click", (e) => {
+                const btn = e.target.closest(".btn-mode");
+                const mode = btn?.dataset.mode;
+                if (!mode)
+                    return;
+                try {
+                    this.spinStrategy = this.spinModeFactory.create(mode);
+                }
+                catch {
+                    return;
+                }
+                modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
+                btn.classList.add("is-active");
+            });
+        }
         document.getElementById("btn-add-leaf").addEventListener("click", () => this.addRootLeaf());
         document.getElementById("btn-add-group").addEventListener("click", () => this.addRootGroup());
         const pityTargetSel = document.getElementById("pity-target");
@@ -762,12 +1287,14 @@ class RewarderApp {
             else if (target.classList.contains("reward-color-input")) {
                 node.color = target.value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             }
             else if (target.classList.contains("reward-border-input")) {
                 node.borderColor = target.value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             }
@@ -783,6 +1310,7 @@ class RewarderApp {
             if (target.classList.contains("reward-name-input")) {
                 node.name = target.value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.svc.rebuildPipeline();
+                this.updateWheelSegments();
             }
         });
         list.addEventListener("click", (e) => {
@@ -826,21 +1354,10 @@ class RewarderApp {
             return;
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
-        const ANIMATED_MAX = 10;
-        const animate = count <= ANIMATED_MAX;
         for (let i = 0; i < count; i++) {
             const { reward, rollNum } = await this.svc.roll();
-            if (animate) {
-                this.renderLatestResult(reward, rollNum);
-                this.renderStats();
-                this.renderPityProgress();
-                if (i < count - 1)
-                    await sleep(130);
-            }
-        }
-        if (!animate && this.svc.history.length > 0) {
-            const last = this.svc.history[0];
-            this.renderLatestResult(last.reward, last.rollNum);
+            await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
+            this.renderLatestResult(reward, rollNum);
             this.renderStats();
             this.renderPityProgress();
         }
@@ -927,6 +1444,7 @@ class RewarderApp {
             return;
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
+        this.updateWheelSegments();
     }
     renderRootNode(node) {
         const canDelete = this.svc.rewardNodes.length > 1;
@@ -1011,7 +1529,7 @@ class RewarderApp {
         this.setRollButtonsDisabled(!valid || this.isRolling);
     }
     renderLatestResult(reward, rollNum) {
-        const container = document.getElementById("latest-result");
+        const container = document.getElementById("card-view");
         if (!container)
             return;
         if (!reward) {
@@ -1106,6 +1624,31 @@ class RewarderApp {
                 </div>
             `;
         }).join("");
+    }
+    // ===== Wheel helpers =====
+    updateWheelSegments() {
+        const leaves = collectLeaves(this.svc.rewardNodes);
+        const segments = leaves.map(leaf => ({
+            id: leaf.id,
+            name: leaf.name,
+            color: leaf.color,
+            borderColor: leaf.borderColor,
+            weight: this.effectiveWeight(leaf.id),
+        }));
+        this.wheel.setSegments(segments);
+    }
+    effectiveWeight(leafId, nodes = this.svc.rewardNodes, parentFraction = 1) {
+        for (const node of nodes) {
+            if (node.isGroup) {
+                const w = this.effectiveWeight(leafId, node.children, parentFraction * node.rate / 100);
+                if (w >= 0)
+                    return w;
+            }
+            else if (node.id === leafId) {
+                return parentFraction * node.rate / 100;
+            }
+        }
+        return -1; // not found
     }
 }
 document.addEventListener("DOMContentLoaded", () => {

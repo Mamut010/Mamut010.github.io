@@ -6,11 +6,23 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private svc       = new RewarderService();
-    private isRolling = false;
+    private svc          = new RewarderService();
+    private wheel!:      SpinningWheel;
+    private isRolling    = false;
+    private spinStrategy!: IWheelSpinStrategy;   // assigned in init()
+
+    // ── Composition root ─────────────────────────────────────────────────────
+    private readonly spinModeFactory:     IWheelSpinStrategyFactory       = new WheelSpinModeFactory();
+    private readonly calculatorFactory:   ISpinningAngleCalculatorFactory  = new WeightedRandomCalculatorFactory();
 
     public init(): void {
         this.svc.init();
+        this.spinStrategy = this.spinModeFactory.create("normal");
+        const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
+        const drawer   = new CanvasWheelDrawer(canvas);
+        const animator = new TwoPhaseWheelAnimator();
+        const spinner  = new DefaultWheelSpinner(animator, this.calculatorFactory);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -43,6 +55,17 @@ class RewarderApp {
         document.getElementById("btn-roll-10")!.addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100")!.addEventListener("click",() => this.doRolls(100));
         document.getElementById("btn-reset")!.addEventListener("click",   () => this.resetStats());
+        const modeSel = document.getElementById("wheel-mode-selector");
+        if (modeSel) {
+            modeSel.addEventListener("click", (e) => {
+                const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-mode");
+                const mode = btn?.dataset.mode as IWheelSpinStrategy["id"] | undefined;
+                if (!mode) return;
+                try { this.spinStrategy = this.spinModeFactory.create(mode); } catch { return; }
+                modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
+                btn!.classList.add("is-active");
+            });
+        }
         document.getElementById("btn-add-leaf")!.addEventListener("click",  () => this.addRootLeaf());
         document.getElementById("btn-add-group")!.addEventListener("click", () => this.addRootGroup());
 
@@ -97,11 +120,13 @@ class RewarderApp {
             } else if (target.classList.contains("reward-color-input")) {
                 node.color = (target as HTMLInputElement).value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             } else if (target.classList.contains("reward-border-input")) {
                 node.borderColor = (target as HTMLInputElement).value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             }
@@ -117,6 +142,7 @@ class RewarderApp {
             if (target.classList.contains("reward-name-input")) {
                 node.name = (target as HTMLInputElement).value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.svc.rebuildPipeline();
+                this.updateWheelSegments();
             }
         });
 
@@ -165,22 +191,10 @@ class RewarderApp {
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
 
-        const ANIMATED_MAX = 10;
-        const animate = count <= ANIMATED_MAX;
-
         for (let i = 0; i < count; i++) {
             const { reward, rollNum } = await this.svc.roll();
-            if (animate) {
-                this.renderLatestResult(reward, rollNum);
-                this.renderStats();
-                this.renderPityProgress();
-                if (i < count - 1) await sleep(130);
-            }
-        }
-
-        if (!animate && this.svc.history.length > 0) {
-            const last = this.svc.history[0];
-            this.renderLatestResult(last.reward, last.rollNum);
+            await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
+            this.renderLatestResult(reward, rollNum);
             this.renderStats();
             this.renderPityProgress();
         }
@@ -269,6 +283,7 @@ class RewarderApp {
         if (!list) return;
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
+        this.updateWheelSegments();
     }
 
     private renderRootNode(node: RewardNodeConfig): string {
@@ -357,7 +372,7 @@ class RewarderApp {
     }
 
     private renderLatestResult(reward: Reward | null, rollNum: number): void {
-        const container = document.getElementById("latest-result");
+        const container = document.getElementById("card-view");
         if (!container) return;
 
         if (!reward) {
@@ -460,6 +475,36 @@ class RewarderApp {
                 </div>
             `;
         }).join("");
+    }
+
+    // ===== Wheel helpers =====
+
+    private updateWheelSegments(): void {
+        const leaves   = collectLeaves(this.svc.rewardNodes);
+        const segments: WheelSegment[] = leaves.map(leaf => ({
+            id:          leaf.id,
+            name:        leaf.name,
+            color:       leaf.color,
+            borderColor: leaf.borderColor,
+            weight:      this.effectiveWeight(leaf.id),
+        }));
+        this.wheel.setSegments(segments);
+    }
+
+    private effectiveWeight(
+        leafId:         string,
+        nodes:          RewardNodeConfig[] = this.svc.rewardNodes,
+        parentFraction: number             = 1,
+    ): number {
+        for (const node of nodes) {
+            if (node.isGroup) {
+                const w = this.effectiveWeight(leafId, node.children, parentFraction * node.rate / 100);
+                if (w >= 0) return w;
+            } else if (node.id === leafId) {
+                return parentFraction * node.rate / 100;
+            }
+        }
+        return -1;  // not found
     }
 }
 
