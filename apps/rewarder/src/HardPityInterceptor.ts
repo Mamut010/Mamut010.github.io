@@ -37,7 +37,7 @@ class HardPityInterceptor implements IRewardInterceptor<Reward> {
 
     private async _forcePity(ctx: RewardPipelineContext<Reward>): Promise<RewardResult<Reward>> {
         const pityConfig = { ...this._target, rate: 100 };
-        const pityTree = await new DynamicRewardTreeFactory([pityConfig]).create(ctx.exec);
+        const pityTree = await new RewardTreeFactory([pityConfig]).create(ctx.exec);
         return ctx.resolver.resolve(pityTree, ctx.exec);
     }
 }

@@ -6,85 +6,14 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private rewardNodes: RewardNodeConfig[] = defaultRewardNodes();
-    private pityEnabled    = true;
-    private pityThreshold  = 90;
-    private pityTargetId: string | null = null;
-    private nextId         = 1;
-
-    private totalRolls   = 0;
-    private rewardCounts = new Map<string, number>();
-    private history: RollRecord[] = [];
-
-    private pipeline!: RewardPipeline<Reward>;
-    private pityInterceptor: HardPityInterceptor | null = null;
-    private rng       = new MathRandomNumberGenerator();
+    private svc       = new RewarderService();
     private isRolling = false;
 
-    private profiles: RewardProfile[] = [];
-    private activeProfileId = "";
-    private _initialized = false;
-
     public init(): void {
-        this.loadState();
-        this._initialized = true;
+        this.svc.init();
         this.bindStaticEvents();
         this.renderAll();
     }
-
-    private rebuildPipeline(): void {
-        // Invalidate stale target id
-        if (this.pityTargetId !== null && !this.findNode(this.pityTargetId, this.rewardNodes)) {
-            this.pityTargetId = null;
-        }
-        const targetConfig = this.pityTargetId
-            ? (this.findNode(this.pityTargetId, this.rewardNodes) ?? null)
-            : null;
-        const { pipeline, pityInterceptor } = buildPipeline(
-            this.rewardNodes,
-            this.pityEnabled,
-            this.pityThreshold,
-            targetConfig,
-        );
-        this.pipeline = pipeline;
-        this.pityInterceptor = pityInterceptor;
-        // Sync pityTargetId to whatever was actually chosen (handles first run auto-pick)
-        if (this.pityInterceptor) {
-            this.pityTargetId = this.pityInterceptor.targetId;
-        }
-        this.saveProfileConfig();
-    }
-
-    private findNode(id: string, nodes: RewardNodeConfig[]): RewardNodeConfig | undefined {
-        for (const node of nodes) {
-            if (node.id === id) return node;
-            if (node.isGroup) {
-                const found = this.findNode(id, node.children);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    }
-
-    private validateTree(nodes: RewardNodeConfig[]): boolean {
-        if (nodes.length === 0) return false;
-        const sum = nodes.reduce((s, n) => s + n.rate, 0);
-        if (Math.abs(sum - 100) >= 0.001) return false;
-        for (const n of nodes) {
-            if (n.rate < 0) return false;
-            if (n.isGroup && !this.validateTree(n.children)) return false;
-        }
-        return true;
-    }
-
-    private isRateValid(): boolean {
-        return this.validateTree(this.rewardNodes);
-    }
-
-    private rootTotalRate(): number {
-        return this.rewardNodes.reduce((s, n) => s + n.rate, 0);
-    }
-
 
     // ===== Events =====
 
@@ -93,20 +22,20 @@ class RewarderApp {
         const pityThreshInput = document.getElementById("pity-threshold") as HTMLInputElement;
 
         pityToggle.addEventListener("change", () => {
-            this.pityEnabled = pityToggle.checked;
-            const pityDisplay = this.pityEnabled ? "flex" : "none";
+            this.svc.pityEnabled = pityToggle.checked;
+            const pityDisplay = this.svc.pityEnabled ? "flex" : "none";
             const row = document.getElementById("pity-config-row");
             if (row) row.style.display = pityDisplay;
             const trow = document.getElementById("pity-target-row");
             if (trow) trow.style.display = pityDisplay;
-            this.rebuildPipeline();
+            this.svc.rebuildPipeline();
             this.renderPityProgress();
         });
 
         pityThreshInput.addEventListener("change", () => {
-            this.pityThreshold = Math.max(1, parseInt(pityThreshInput.value) || 1);
-            pityThreshInput.value = String(this.pityThreshold);
-            this.rebuildPipeline();
+            this.svc.pityThreshold = Math.max(1, parseInt(pityThreshInput.value) || 1);
+            pityThreshInput.value = String(this.svc.pityThreshold);
+            this.svc.rebuildPipeline();
             this.renderPityProgress();
         });
 
@@ -120,8 +49,8 @@ class RewarderApp {
         const pityTargetSel = document.getElementById("pity-target") as HTMLSelectElement | null;
         if (pityTargetSel) {
             pityTargetSel.addEventListener("change", () => {
-                this.pityTargetId = pityTargetSel.value || null;
-                this.rebuildPipeline();
+                this.svc.pityTargetId = pityTargetSel.value || null;
+                this.svc.rebuildPipeline();
                 this.renderPityTargetPicker();
                 this.renderPityProgress();
             });
@@ -129,14 +58,19 @@ class RewarderApp {
 
         const profileSel = document.getElementById("profile-select") as HTMLSelectElement | null;
         if (profileSel) {
-            profileSel.addEventListener("change", () => this.switchProfile(profileSel.value));
+            profileSel.addEventListener("change", () => {
+                if (this.svc.switchProfile(profileSel.value)) this.renderAll();
+            });
         }
         document.getElementById("btn-new-profile")?.addEventListener("click", () => this.newProfile());
-        document.getElementById("btn-delete-profile")?.addEventListener("click", () => this.deleteProfile(this.activeProfileId));
+        document.getElementById("btn-delete-profile")?.addEventListener("click", () => this.deleteProfile(this.svc.activeProfileId));
 
         const profileNameInput = document.getElementById("profile-name") as HTMLInputElement | null;
         if (profileNameInput) {
-            profileNameInput.addEventListener("change", () => this.renameProfile(profileNameInput.value.trim()));
+            profileNameInput.addEventListener("change", () => {
+                this.svc.renameProfile(profileNameInput.value.trim());
+                this.renderProfilePicker();
+            });
         }
 
         this.bindRewardListEvents();
@@ -150,7 +84,7 @@ class RewarderApp {
             const target = e.target as HTMLElement;
             const treeNode = target.closest<HTMLElement>(".tree-node");
             if (!treeNode) return;
-            const node = this.findNode(treeNode.dataset.id!, this.rewardNodes);
+            const node = this.svc.findNode(treeNode.dataset.id!);
             if (!node) return;
 
             if (target.classList.contains("reward-rate-input")) {
@@ -159,15 +93,15 @@ class RewarderApp {
                 (target as HTMLInputElement).value = String(node.rate);
                 this.updateEffectiveRatesInPlace();
                 this.updateRateSummary();
-                this.rebuildPipeline();
+                this.svc.rebuildPipeline();
             } else if (target.classList.contains("reward-color-input")) {
                 node.color = (target as HTMLInputElement).value;
-                this.saveProfileConfig();
+                this.svc.saveProfileConfig();
                 this.renderStats();
                 this.renderHistory();
             } else if (target.classList.contains("reward-border-input")) {
                 node.borderColor = (target as HTMLInputElement).value;
-                this.saveProfileConfig();
+                this.svc.saveProfileConfig();
                 this.renderStats();
                 this.renderHistory();
             }
@@ -177,12 +111,12 @@ class RewarderApp {
             const target = e.target as HTMLElement;
             const treeNode = target.closest<HTMLElement>(".tree-node");
             if (!treeNode) return;
-            const node = this.findNode(treeNode.dataset.id!, this.rewardNodes);
+            const node = this.svc.findNode(treeNode.dataset.id!);
             if (!node) return;
 
             if (target.classList.contains("reward-name-input")) {
                 node.name = (target as HTMLInputElement).value.trim() || (node.isGroup ? "Group" : "Reward");
-                this.rebuildPipeline();
+                this.svc.rebuildPipeline();
             }
         });
 
@@ -190,50 +124,32 @@ class RewarderApp {
             const target = e.target as HTMLElement;
             if (target.closest(".btn-delete-reward")) {
                 const treeNode = target.closest<HTMLElement>(".tree-node");
-                if (treeNode) this.removeNode(treeNode.dataset.id!);
+                if (treeNode) {
+                    this.svc.removeNode(treeNode.dataset.id!);
+                    this.svc.rebuildPipeline();
+                    this.renderRewardEditor();
+                    this.updateRateSummary();
+                }
             } else if (target.closest(".btn-add-child")) {
                 const treeNode = target.closest<HTMLElement>(".tree-node.tree-group");
-                if (treeNode) this.addChildToGroup(treeNode.dataset.id!);
+                if (treeNode) {
+                    const id = this.svc.addChildToGroup(treeNode.dataset.id!);
+                    if (id) this.afterEdit(id);
+                }
             }
         });
     }
 
     private addRootLeaf(): void {
-        const id = `leaf-${this.nextId++}`;
-        this.rewardNodes.push({
-            id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
-        });
-        this.afterEdit(id);
+        this.afterEdit(this.svc.addRootLeaf());
     }
 
     private addRootGroup(): void {
-        const gid = `group-${this.nextId++}`;
-        const lid = `leaf-${this.nextId++}`;
-        this.rewardNodes.push({
-            id: gid, name: "New Group", rate: 0, isGroup: true,
-            color: "", borderColor: "",
-            children: [{
-                id: lid, name: "New Reward", rate: 100, isGroup: false,
-                color: "#c084fc", borderColor: "#c084fc", children: [],
-            }],
-        });
-        this.afterEdit(gid);
-    }
-
-    private addChildToGroup(groupId: string): void {
-        const group = this.findNode(groupId, this.rewardNodes);
-        if (!group || !group.isGroup) return;
-        const id = `leaf-${this.nextId++}`;
-        group.children.push({
-            id, name: "New Reward", rate: 0, isGroup: false,
-            color: "#c084fc", borderColor: "#c084fc", children: [],
-        });
-        this.afterEdit(id);
+        this.afterEdit(this.svc.addRootGroup());
     }
 
     private afterEdit(focusId: string): void {
-        this.rebuildPipeline();
+        this.svc.rebuildPipeline();
         this.renderRewardEditor();
         this.updateRateSummary();
         const input = document.querySelector<HTMLInputElement>(`.tree-node[data-id="${focusId}"] .reward-name-input`);
@@ -241,36 +157,10 @@ class RewarderApp {
         input?.select();
     }
 
-    private removeNode(id: string): void {
-        if (this.rewardNodes.length > 1) {
-            const idx = this.rewardNodes.findIndex(n => n.id === id);
-            if (idx !== -1) {
-                this.rewardNodes.splice(idx, 1);
-                this.rebuildPipeline();
-                this.renderRewardEditor();
-                this.updateRateSummary();
-                return;
-            }
-        }
-        for (const group of this.rewardNodes) {
-            if (!group.isGroup) continue;
-            if (group.children.length > 1) {
-                const idx = group.children.findIndex(n => n.id === id);
-                if (idx !== -1) {
-                    group.children.splice(idx, 1);
-                    this.rebuildPipeline();
-                    this.renderRewardEditor();
-                    this.updateRateSummary();
-                    return;
-                }
-            }
-        }
-    }
-
     // ===== Rolls =====
 
     private async doRolls(count: number): Promise<void> {
-        if (this.isRolling || !this.isRateValid()) return;
+        if (this.isRolling || !this.svc.isRateValid()) return;
 
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
@@ -279,14 +169,7 @@ class RewarderApp {
         const animate = count <= ANIMATED_MAX;
 
         for (let i = 0; i < count; i++) {
-            const result = await this.pipeline.invoke({ rng: this.rng });
-            const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
-            const rollNum = ++this.totalRolls;
-
-            this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
-            this.history.unshift({ rollNum, reward });
-            if (this.history.length > 200) this.history.pop();
-
+            const { reward, rollNum } = await this.svc.roll();
             if (animate) {
                 this.renderLatestResult(reward, rollNum);
                 this.renderStats();
@@ -295,15 +178,15 @@ class RewarderApp {
             }
         }
 
-        if (!animate && this.history.length > 0) {
-            const last = this.history[0];
+        if (!animate && this.svc.history.length > 0) {
+            const last = this.svc.history[0];
             this.renderLatestResult(last.reward, last.rollNum);
             this.renderStats();
             this.renderPityProgress();
         }
 
         this.renderHistory();
-        this.saveCurrentStats();
+        this.svc.saveCurrentStats();
         this.isRolling = false;
         this.setRollButtonsDisabled(false);
     }
@@ -316,210 +199,48 @@ class RewarderApp {
     }
 
     private resetStats(): void {
-        this.totalRolls  = 0;
-        this.rewardCounts = new Map();
-        this.history     = [];
-        this.rebuildPipeline();
+        this.svc.resetStats();
+        this.svc.rebuildPipeline();
         this.renderLatestResult(null, 0);
         this.renderStats();
         this.renderPityProgress();
         this.renderHistory();
-        this.saveCurrentStats();
+        this.svc.saveCurrentStats();
     }
 
-    // ===== Profiles & Persistence =====
-
-    private loadState(): void {
-        let profiles = storageLoadProfiles();
-        let activeId = storageLoadActiveProfileId();
-
-        if (profiles.length === 0) {
-            const firstProfile: RewardProfile = {
-                id: generateProfileId(),
-                name: "Default",
-                nodes: defaultRewardNodes(),
-                pityEnabled: true,
-                pityThreshold: 90,
-                pityTargetId: null,
-                nextId: 1,
-            };
-            profiles = [firstProfile];
-            storageSaveProfiles(profiles);
-            activeId = firstProfile.id;
-            storageSaveActiveProfileId(activeId);
-        }
-
-        this.profiles = profiles;
-        const active = profiles.find(p => p.id === activeId) ?? profiles[0];
-        this.activeProfileId = active.id;
-        storageSaveActiveProfileId(this.activeProfileId);
-
-        this.applyProfile(active);
-        this.rebuildPipeline();
-
-        const stats = storageLoadStats(active.id);
-        if (stats) {
-            this.applyStats(stats);
-            if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
-        }
-    }
-
-    private applyProfile(profile: RewardProfile): void {
-        this.rewardNodes   = profile.nodes;
-        this.pityEnabled   = profile.pityEnabled;
-        this.pityThreshold = profile.pityThreshold;
-        this.pityTargetId  = profile.pityTargetId;
-        this.nextId        = profile.nextId;
-    }
-
-    private applyStats(stats: PersistedStats): void {
-        this.totalRolls   = stats.totalRolls;
-        this.rewardCounts = new Map(Object.entries(stats.rewardCounts));
-        this.history      = stats.history.map(h => ({
-            rollNum: h.rollNum,
-            reward:  new Reward(h.rewardId, h.rewardName),
-        }));
-    }
-
-    private saveProfileConfig(): void {
-        const idx = this.profiles.findIndex(p => p.id === this.activeProfileId);
-        if (idx === -1) return;
-        this.profiles[idx] = {
-            ...this.profiles[idx],
-            nodes:         this.rewardNodes,
-            pityEnabled:   this.pityEnabled,
-            pityThreshold: this.pityThreshold,
-            pityTargetId:  this.pityTargetId,
-            nextId:        this.nextId,
-        };
-        storageSaveProfiles(this.profiles);
-    }
-
-    private saveCurrentStats(): void {
-        const stats: PersistedStats = {
-            totalRolls:   this.totalRolls,
-            rewardCounts: Object.fromEntries(this.rewardCounts),
-            history:      this.history.map(h => ({
-                rollNum:    h.rollNum,
-                rewardId:   h.reward.id,
-                rewardName: h.reward.name,
-            })),
-            pityCounter: this.pityInterceptor?.counter ?? 0,
-        };
-        storageSaveStats(this.activeProfileId, stats);
-    }
-
-    private switchProfile(id: string): void {
-        if (id === this.activeProfileId) return;
-        const profile = this.profiles.find(p => p.id === id);
-        if (!profile) return;
-
-        this.saveCurrentStats();
-        this.activeProfileId = id;
-        storageSaveActiveProfileId(id);
-
-        this.totalRolls   = 0;
-        this.rewardCounts = new Map();
-        this.history      = [];
-
-        this.applyProfile(profile);
-        this.rebuildPipeline();
-
-        const stats = storageLoadStats(id);
-        if (stats) {
-            this.applyStats(stats);
-            if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
-        }
-        this.renderAll();
-    }
+    // ===== Profiles =====
 
     private newProfile(): void {
-        this.saveCurrentStats();
-        const num = this.profiles.length + 1;
-        const profile: RewardProfile = {
-            id:            generateProfileId(),
-            name:          "Profile " + num,
-            nodes:         defaultRewardNodes(),
-            pityEnabled:   true,
-            pityThreshold: 90,
-            pityTargetId:  null,
-            nextId:        1,
-        };
-        this.profiles.push(profile);
-        storageSaveProfiles(this.profiles);
-
-        this.activeProfileId = profile.id;
-        storageSaveActiveProfileId(profile.id);
-
-        this.totalRolls   = 0;
-        this.rewardCounts = new Map();
-        this.history      = [];
-
-        this.applyProfile(profile);
-        this.rebuildPipeline();
+        this.svc.newProfile();
         this.renderAll();
     }
 
     private deleteProfile(id: string): void {
-        if (this.profiles.length <= 1) return;
-        const idx = this.profiles.findIndex(p => p.id === id);
-        if (idx === -1) return;
-
-        storageDeleteStats(id);
-        this.profiles.splice(idx, 1);
-        storageSaveProfiles(this.profiles);
-
-        if (this.activeProfileId === id) {
-            const next = this.profiles[Math.max(0, idx - 1)];
-            this.activeProfileId = next.id;
-            storageSaveActiveProfileId(next.id);
-
-            this.totalRolls   = 0;
-            this.rewardCounts = new Map();
-            this.history      = [];
-
-            this.applyProfile(next);
-            this.rebuildPipeline();
-
-            const stats = storageLoadStats(next.id);
-            if (stats) {
-                this.applyStats(stats);
-                if (this.pityInterceptor) this.pityInterceptor.setCounter(stats.pityCounter);
-            }
-            this.renderAll();
-        } else {
-            this.renderProfilePicker();
-        }
-    }
-
-    private renameProfile(name: string): void {
-        const idx = this.profiles.findIndex(p => p.id === this.activeProfileId);
-        if (idx === -1) return;
-        this.profiles[idx].name = name || "Profile";
-        storageSaveProfiles(this.profiles);
-        this.renderProfilePicker();
+        const activeChanged = this.svc.deleteProfile(id);
+        if (activeChanged) this.renderAll();
+        else this.renderProfilePicker();
     }
 
     private renderProfilePicker(): void {
         const sel = document.getElementById("profile-select") as HTMLSelectElement | null;
         if (sel) {
-            sel.innerHTML = this.profiles
-                .map(p => `<option value="${p.id}"${p.id === this.activeProfileId ? " selected" : ""}>${escapeHtml(p.name)}</option>`)
+            sel.innerHTML = this.svc.profiles
+                .map(p => `<option value="${p.id}"${p.id === this.svc.activeProfileId ? " selected" : ""}>${escapeHtml(p.name)}</option>`)
                 .join("");
         }
         const nameInput = document.getElementById("profile-name") as HTMLInputElement | null;
         if (nameInput) {
-            const active = this.profiles.find(p => p.id === this.activeProfileId);
+            const active = this.svc.profiles.find(p => p.id === this.svc.activeProfileId);
             nameInput.value = active?.name ?? "";
         }
         const delBtn = document.getElementById("btn-delete-profile") as HTMLButtonElement | null;
-        if (delBtn) delBtn.disabled = this.profiles.length <= 1;
+        if (delBtn) delBtn.disabled = this.svc.profiles.length <= 1;
     }
 
     // ===== Renders =====
 
     private renderAll(): void {
-        const pityDisplay = this.pityEnabled ? "flex" : "none";
+        const pityDisplay = this.svc.pityEnabled ? "flex" : "none";
         const row = document.getElementById("pity-config-row");
         if (row) row.style.display = pityDisplay;
         const trow = document.getElementById("pity-target-row");
@@ -534,7 +255,7 @@ class RewarderApp {
     }
 
     private updateEffectiveRatesInPlace(): void {
-        for (const node of this.rewardNodes) {
+        for (const node of this.svc.rewardNodes) {
             if (!node.isGroup) continue;
             for (const child of node.children) {
                 const effEl = document.querySelector<HTMLElement>(`.tree-node[data-id="${child.id}"] .eff-rate`);
@@ -546,12 +267,12 @@ class RewarderApp {
     private renderRewardEditor(): void {
         const list = document.getElementById("reward-list");
         if (!list) return;
-        list.innerHTML = this.rewardNodes.map(node => this.renderRootNode(node)).join("");
+        list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
     }
 
     private renderRootNode(node: RewardNodeConfig): string {
-        const canDelete = this.rewardNodes.length > 1;
+        const canDelete = this.svc.rewardNodes.length > 1;
         return node.isGroup
             ? this.renderGroupNode(node, canDelete)
             : this.renderLeafNode(node, null, canDelete);
@@ -560,9 +281,9 @@ class RewarderApp {
     private renderPityTargetPicker(): void {
         const sel = document.getElementById("pity-target") as HTMLSelectElement | null;
         if (!sel) return;
-        const choices = collectPityChoices(this.rewardNodes);
+        const choices = collectPityChoices(this.svc.rewardNodes);
         sel.innerHTML = choices
-            .map(c => `<option value="${c.id}"${c.id === this.pityTargetId ? " selected" : ""}>${escapeHtml(c.label)}</option>`)
+            .map(c => `<option value="${c.id}"${c.id === this.svc.pityTargetId ? " selected" : ""}>${escapeHtml(c.label)}</option>`)
             .join("");
     }
 
@@ -613,16 +334,16 @@ class RewarderApp {
     }
 
     private updateRateSummary(): void {
-        const rootTotal = this.rootTotalRate();
+        const rootTotal = this.svc.rootTotalRate();
         const totalEl = document.getElementById("total-rate");
         if (totalEl) totalEl.textContent = rootTotal.toFixed(2);
 
         const rootOk = Math.abs(rootTotal - 100) < 0.001;
-        const valid = this.isRateValid();
+        const valid = this.svc.isRateValid();
         const warning = document.getElementById("rate-warning");
         if (warning) warning.style.display = rootOk ? "none" : "inline";
 
-        for (const group of this.rewardNodes) {
+        for (const group of this.svc.rewardNodes) {
             if (!group.isGroup) continue;
             const sumEl = document.querySelector<HTMLElement>(`.tree-node[data-id="${group.id}"] .group-rate-summary`);
             if (!sumEl) continue;
@@ -644,7 +365,7 @@ class RewarderApp {
             return;
         }
 
-        const cfg         = this.findNode(reward.id, this.rewardNodes);
+        const cfg         = this.svc.findNode(reward.id);
         const color       = cfg?.color       ?? "#eee";
         const borderColor = cfg?.borderColor ?? "#444";
 
@@ -663,15 +384,15 @@ class RewarderApp {
     }
 
     private renderStats(): void {
-        const total = this.totalRolls;
+        const total = this.svc.totalRolls;
         const totalEl = document.getElementById("stat-total");
         if (totalEl) totalEl.textContent = String(total);
 
         const container = document.getElementById("stats-rows");
         if (!container) return;
 
-        container.innerHTML = collectLeaves(this.rewardNodes).map(leaf => {
-            const count = this.rewardCounts.get(leaf.id) ?? 0;
+        container.innerHTML = collectLeaves(this.svc.rewardNodes).map(leaf => {
+            const count = this.svc.rewardCounts.get(leaf.id) ?? 0;
             const pct   = total > 0 ? (count / total) * 100 : 0;
             return `
                 <div class="stat-row">
@@ -692,18 +413,18 @@ class RewarderApp {
         const section = document.getElementById("pity-section");
         if (!section) return;
 
-        if (!this.pityEnabled || !this.pityInterceptor) {
+        if (!this.svc.pityEnabled || !this.svc.pityInterceptor) {
             section.style.display = "none";
             return;
         }
         section.style.display = "block";
 
-        const counter   = this.pityInterceptor.counter;
-        const threshold = this.pityThreshold;
+        const counter   = this.svc.pityInterceptor.counter;
+        const threshold = this.svc.pityThreshold;
         const pct     = Math.min(100, (counter / threshold) * 100);
         const urgency = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
 
-        const targetName = this.pityInterceptor?.targetName ?? "—";
+        const targetName = this.svc.pityInterceptor.targetName ?? "—";
 
         const countEl     = document.getElementById("pity-count");
         const thresholdEl = document.getElementById("pity-threshold-display");
@@ -723,13 +444,13 @@ class RewarderApp {
         const container = document.getElementById("history-log");
         if (!container) return;
 
-        if (this.history.length === 0) {
+        if (this.svc.history.length === 0) {
             container.innerHTML = `<div class="history-empty">No rolls yet</div>`;
             return;
         }
 
-        container.innerHTML = this.history.slice(0, 60).map(entry => {
-            const cfg         = this.findNode(entry.reward.id, this.rewardNodes);
+        container.innerHTML = this.svc.history.slice(0, 60).map(entry => {
+            const cfg         = this.svc.findNode(entry.reward.id);
             const color       = cfg?.color       ?? "#eee";
             const borderColor = cfg?.borderColor ?? "#555";
             return `

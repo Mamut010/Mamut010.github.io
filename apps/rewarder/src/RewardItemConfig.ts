@@ -74,6 +74,6 @@ function defaultRewardNodes(): RewardNodeConfig[] {
                 { id: "rare", name: "Rare",        rate: 90, isGroup: false, color: "#4f8ef7", borderColor: "#4f8ef7", children: [] },
             ],
         },
-        { id: "common", name: "Common Reward", rate: 80, isGroup: false, color: "#8b96a5", borderColor: "#444f5a", children: [] },
+        { id: "common", name: "Common", rate: 80, isGroup: false, color: "#8b96a5", borderColor: "#444f5a", children: [] },
     ];
 }
