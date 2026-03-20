@@ -480,7 +480,7 @@ body {
 .btn-reset {
     width: 100%;
     background: transparent;
-    color: var(--text-dim);
+    color: var(--text-muted);
     border: 1px solid var(--border);
     font-size: 0.8em;
     font-weight: 600;
@@ -668,7 +668,31 @@ body {
 .history-reward { font-weight: 500; }
 
 /* ===== Responsive ===== */
+
+/* Tablet: tighten the sidebar */
+@media (max-width: 900px) {
+    .config-panel {
+        flex: 0 0 260px;
+    }
+}
+
+/* Mobile: stack layout */
 @media (max-width: 700px) {
+    .page-wrapper {
+        padding: 1em 0.85em 2.5em;
+    }
+    .app-header {
+        justify-content: flex-start;
+        gap: 1em;
+    }
+    .app-title {
+        font-size: 2em;
+        flex: 1;
+        text-align: center;
+    }
+    .header-spacer {
+        display: none;
+    }
     .app-layout {
         flex-direction: column;
     }
@@ -676,22 +700,60 @@ body {
         flex: none;
         width: 100%;
     }
+    .main-content {
+        width: 100%;
+    }
     .roll-buttons {
-        flex-direction: row;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
     }
-    .btn-roll, .btn-roll-multi {
-        flex: 1;
-    }
-    .app-title {
-        font-size: 2em;
-    }
-    .header-spacer {
-        min-width: 40px;
+    .btn-roll {
+        grid-column: 1 / -1;
     }
     .stat-row {
         grid-template-columns: 100px 1fr 80px;
     }
     .reward-card {
-        padding: 1em 2em;
+        padding: 1.1em 1.5em;
+    }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+    .page-wrapper {
+        padding: 0.85em 0.75em 2em;
+    }
+    .app-title {
+        font-size: 1.7em;
+    }
+    .stat-row {
+        grid-template-columns: 90px 1fr 74px;
+        gap: 0.5em;
+    }
+    .reward-card {
+        padding: 0.9em 1.1em;
+    }
+    .config-section {
+        padding: 0.9em;
+    }
+    .history-log {
+        max-height: 200px;
+    }
+}
+
+/* Extra small mobile */
+@media (max-width: 360px) {
+    .page-wrapper {
+        padding: 0.75em 0.6em 1.8em;
+    }
+    .app-title {
+        font-size: 1.5em;
+    }
+    .stat-row {
+        grid-template-columns: 78px 1fr 70px;
+        gap: 0.4em;
+    }
+    .reward-card {
+        padding: 0.8em 0.9em;
     }
 }
