@@ -29,7 +29,7 @@ class SpinningWheel {
     private rafId:              number | null = null;
     private resolveSpinPromise: (() => void)  | null = null;
 
-    private readonly calculator: ISpinningAngleCalculator = new BounceAngleCalculator();
+    private readonly calculatorFactory: ISpinningAngleCalculatorFactory;
 
     private static readonly NORMAL_DURATION = 4000;   // ms for a full spin
     private static readonly ACCEL_CAP_MS   = 900;     // max remaining ms after accelerate()
@@ -37,9 +37,10 @@ class SpinningWheel {
     private static readonly PHASE1_FRAC    = 0.92;    // fraction of total duration for forward spin
     private static readonly MIN_SEG_FRAC   = 0.028;   // minimum visual fraction per segment (~10°)
 
-    constructor(canvas: HTMLCanvasElement) {
-        this.canvas = canvas;
-        this.ctx    = canvas.getContext("2d")!;
+    constructor(canvas: HTMLCanvasElement, calculatorFactory: ISpinningAngleCalculatorFactory) {
+        this.canvas            = canvas;
+        this.ctx               = canvas.getContext("2d")!;
+        this.calculatorFactory = calculatorFactory;
         this.draw();
     }
 
@@ -58,7 +59,7 @@ class SpinningWheel {
     }
 
     /** Start spin animation to targetIndex. Returns a Promise that resolves when done. */
-    spin(targetIndex: number): Promise<void> {
+    spin(targetIndex: number, context: SpinContext): Promise<void> {
         // Cancel any previous in-flight animation
         if (this.rafId !== null) {
             cancelAnimationFrame(this.rafId);
@@ -68,9 +69,10 @@ class SpinningWheel {
         this.resolveSpinPromise = null;
         oldResolve?.();
 
-        const TAU    = 2 * Math.PI;
-        const angles = this.segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
-        const landing = this.calculator.calculate(angles);
+        const TAU       = 2 * Math.PI;
+        const angles    = this.segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
+        const calculator = this.calculatorFactory.create(context);
+        const landing   = calculator.calculate(angles);
 
         // Compute how much to rotate so that landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π)  ⟹  rot ≡ -a
@@ -84,8 +86,10 @@ class SpinningWheel {
         this.spinFromRotation = this.currentRotation;
         this.finalRotation    = this.currentRotation + delta;
 
-        if (landing.overshootDelta != null && landing.overshootDelta > 0) {
-            this.overshootRotation = this.finalRotation + landing.overshootDelta;
+        if (landing.correctionDelta != null && landing.correctionDelta !== 0) {
+            // positive correctionDelta → overshoot (wheel goes past, phase 2 eases back)
+            // negative correctionDelta → undershoot (wheel stops short, phase 2 nudges forward)
+            this.overshootRotation = this.finalRotation + landing.correctionDelta;
             this.phase1Duration    = SpinningWheel.NORMAL_DURATION * SpinningWheel.PHASE1_FRAC;
             this.phase2Duration    = SpinningWheel.NORMAL_DURATION * (1 - SpinningWheel.PHASE1_FRAC);
         } else {

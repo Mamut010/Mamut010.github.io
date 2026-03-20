@@ -385,7 +385,7 @@ class NormalSpinStrategy {
         this.label = "Normal";
     }
     execute(wheel, targetIndex) {
-        return wheel.spin(targetIndex);
+        return wheel.spin(targetIndex, { modeId: this.id });
     }
 }
 class AccelerateSpinStrategy {
@@ -394,7 +394,7 @@ class AccelerateSpinStrategy {
         this.label = "⚡ Fast";
     }
     execute(wheel, targetIndex) {
-        const p = wheel.spin(targetIndex);
+        const p = wheel.spin(targetIndex, { modeId: this.id });
         wheel.accelerate();
         return p;
     }
@@ -405,50 +405,111 @@ class SkipSpinStrategy {
         this.label = "⏭ Skip";
     }
     execute(wheel, targetIndex) {
-        const p = wheel.spin(targetIndex);
+        const p = wheel.spin(targetIndex, { modeId: this.id });
         wheel.skip();
         return p;
     }
 }
-const SPIN_STRATEGIES = {
-    normal: new NormalSpinStrategy(),
-    accelerate: new AccelerateSpinStrategy(),
-    skip: new SkipSpinStrategy(),
-};
+class WheelSpinModeFactory {
+    constructor() {
+        this.registry = new Map([
+            ["normal", new NormalSpinStrategy()],
+            ["accelerate", new AccelerateSpinStrategy()],
+            ["skip", new SkipSpinStrategy()],
+        ]);
+    }
+    create(id) {
+        const strategy = this.registry.get(id);
+        if (!strategy)
+            throw new Error(`Unknown spin mode: ${id}`);
+        return strategy;
+    }
+    allModes() {
+        return [...this.registry.values()];
+    }
+}
 // ===== Spinning Angle Calculator (Strategy Pattern) =====
-/** Lands at a uniformly random position within the inner 80% of the segment — no bounce. */
+// ── Concrete calculators ──────────────────────────────────────────────────────
+/** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
 class NaturalAngleCalculator {
     calculate(segAngles) {
         const { start, sweep } = segAngles;
         const margin = sweep * 0.10;
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
         const TAU = 2 * Math.PI;
+        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
         return { landingAngle: ((landingAngle % TAU) + TAU) % TAU };
     }
 }
 /**
- * Lands at a random position within the inner 70% of the segment, then adds a
- * small forward overshoot so the wheel eases back slightly — "almost stopped,
- * then nudged a little further".
+ * Lands past the target, then eases back.
+ * The wheel appears to overshoot by a small amount then settle.
  */
-class BounceAngleCalculator {
+class OvershootAngleCalculator {
     calculate(segAngles) {
         const { start, sweep } = segAngles;
-        // Stay 15% away from each edge so the overshoot can't push us outside the segment.
+        // Stay 15% from each edge so the overshoot lands within the same segment.
         const margin = sweep * 0.15;
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        // Overshoot: 8–16% of the segment's sweep, minimum 0.04 rad (~2.3°) so it's always visible.
-        const overshootDelta = Math.max(0.04, sweep * (0.08 + Math.random() * 0.08));
         const TAU = 2 * Math.PI;
+        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
+        // correctionDelta > 0: forward overshoot, 8–16% of sweep, minimum 0.04 rad.
+        const correctionDelta = Math.max(0.04, sweep * (0.08 + Math.random() * 0.08));
         return {
             landingAngle: ((landingAngle % TAU) + TAU) % TAU,
-            overshootDelta,
+            correctionDelta,
         };
     }
 }
+/**
+ * Stops just short of the target, then nudges forward.
+ * The wheel appears to lose momentum right before the target, then creep in.
+ */
+class UndershootAngleCalculator {
+    calculate(segAngles) {
+        const { start, sweep } = segAngles;
+        // Keep 20% margin from each edge so the undershoot pause stays inside the segment.
+        const margin = sweep * 0.20;
+        const TAU = 2 * Math.PI;
+        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
+        // correctionDelta < 0: the animation stops this far before landingAngle, then creeps forward.
+        const correctionDelta = -Math.max(0.03, sweep * (0.06 + Math.random() * 0.07));
+        return {
+            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            correctionDelta,
+        };
+    }
+}
+// ── Factory ───────────────────────────────────────────────────────────────────
+/**
+ * Picks a calculator using weighted random selection.
+ * - skip mode: always Natural (animation is instant anyway).
+ * - accelerate mode: mostly Natural, occasional Overshoot.
+ * - normal mode: mix of all three for varied feel.
+ */
+class WeightedRandomCalculatorFactory {
+    create(context) {
+        if (context.modeId === "skip")
+            return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        const pool = context.modeId === "accelerate"
+            ? WeightedRandomCalculatorFactory.ACCEL_POOL
+            : WeightedRandomCalculatorFactory.NORMAL_POOL;
+        const items = pool.map(([calc]) => calc);
+        const weights = pool.map(([, w]) => w);
+        return Collections.randomItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+    }
+}
+WeightedRandomCalculatorFactory.NORMAL_POOL = [
+    [new NaturalAngleCalculator(), 65],
+    [new OvershootAngleCalculator(), 20],
+    [new UndershootAngleCalculator(), 15],
+];
+WeightedRandomCalculatorFactory.ACCEL_POOL = [
+    [new NaturalAngleCalculator(), 80],
+    [new OvershootAngleCalculator(), 20],
+];
+WeightedRandomCalculatorFactory.NATURAL_ONLY = new NaturalAngleCalculator();
 // ===== Spinning Wheel UI =====
 class SpinningWheel {
-    constructor(canvas) {
+    constructor(canvas, calculatorFactory) {
         this.segments = [];
         this.segAngles = [];
         // Animation state
@@ -463,9 +524,9 @@ class SpinningWheel {
         this.inPhase2 = false;
         this.rafId = null;
         this.resolveSpinPromise = null;
-        this.calculator = new BounceAngleCalculator();
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
+        this.calculatorFactory = calculatorFactory;
         this.draw();
     }
     // ===== Public API =====
@@ -481,7 +542,7 @@ class SpinningWheel {
         return idx >= 0 ? idx : 0;
     }
     /** Start spin animation to targetIndex. Returns a Promise that resolves when done. */
-    spin(targetIndex) {
+    spin(targetIndex, context) {
         // Cancel any previous in-flight animation
         if (this.rafId !== null) {
             cancelAnimationFrame(this.rafId);
@@ -492,7 +553,8 @@ class SpinningWheel {
         oldResolve?.();
         const TAU = 2 * Math.PI;
         const angles = this.segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
-        const landing = this.calculator.calculate(angles);
+        const calculator = this.calculatorFactory.create(context);
+        const landing = calculator.calculate(angles);
         // Compute how much to rotate so that landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π)  ⟹  rot ≡ -a
         const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
@@ -504,8 +566,10 @@ class SpinningWheel {
         this.inPhase2 = false;
         this.spinFromRotation = this.currentRotation;
         this.finalRotation = this.currentRotation + delta;
-        if (landing.overshootDelta != null && landing.overshootDelta > 0) {
-            this.overshootRotation = this.finalRotation + landing.overshootDelta;
+        if (landing.correctionDelta != null && landing.correctionDelta !== 0) {
+            // positive correctionDelta → overshoot (wheel goes past, phase 2 eases back)
+            // negative correctionDelta → undershoot (wheel stops short, phase 2 nudges forward)
+            this.overshootRotation = this.finalRotation + landing.correctionDelta;
             this.phase1Duration = SpinningWheel.NORMAL_DURATION * SpinningWheel.PHASE1_FRAC;
             this.phase2Duration = SpinningWheel.NORMAL_DURATION * (1 - SpinningWheel.PHASE1_FRAC);
         }
@@ -1055,11 +1119,14 @@ class RewarderApp {
     constructor() {
         this.svc = new RewarderService();
         this.isRolling = false;
-        this.spinStrategy = SPIN_STRATEGIES.normal;
+        // ── Composition root ─────────────────────────────────────────────────────
+        this.spinModeFactory = new WheelSpinModeFactory();
+        this.calculatorFactory = new WeightedRandomCalculatorFactory();
     }
     init() {
         this.svc.init();
-        this.wheel = new SpinningWheel(document.getElementById("wheel-canvas"));
+        this.spinStrategy = this.spinModeFactory.create("normal");
+        this.wheel = new SpinningWheel(document.getElementById("wheel-canvas"), this.calculatorFactory);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -1094,9 +1161,14 @@ class RewarderApp {
             modeSel.addEventListener("click", (e) => {
                 const btn = e.target.closest(".btn-mode");
                 const mode = btn?.dataset.mode;
-                if (!mode || !SPIN_STRATEGIES[mode])
+                if (!mode)
                     return;
-                this.spinStrategy = SPIN_STRATEGIES[mode];
+                try {
+                    this.spinStrategy = this.spinModeFactory.create(mode);
+                }
+                catch {
+                    return;
+                }
                 modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
                 btn.classList.add("is-active");
             });

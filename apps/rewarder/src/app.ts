@@ -9,11 +9,19 @@ class RewarderApp {
     private svc          = new RewarderService();
     private wheel!:      SpinningWheel;
     private isRolling    = false;
-    private spinStrategy: IWheelSpinStrategy = SPIN_STRATEGIES.normal;
+    private spinStrategy!: IWheelSpinStrategy;   // assigned in init()
+
+    // ── Composition root ─────────────────────────────────────────────────────
+    private readonly spinModeFactory:     IWheelSpinStrategyFactory       = new WheelSpinModeFactory();
+    private readonly calculatorFactory:   ISpinningAngleCalculatorFactory  = new WeightedRandomCalculatorFactory();
 
     public init(): void {
         this.svc.init();
-        this.wheel = new SpinningWheel(document.getElementById("wheel-canvas") as HTMLCanvasElement);
+        this.spinStrategy = this.spinModeFactory.create("normal");
+        this.wheel = new SpinningWheel(
+            document.getElementById("wheel-canvas") as HTMLCanvasElement,
+            this.calculatorFactory
+        );
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -51,8 +59,8 @@ class RewarderApp {
             modeSel.addEventListener("click", (e) => {
                 const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-mode");
                 const mode = btn?.dataset.mode as IWheelSpinStrategy["id"] | undefined;
-                if (!mode || !SPIN_STRATEGIES[mode]) return;
-                this.spinStrategy = SPIN_STRATEGIES[mode];
+                if (!mode) return;
+                try { this.spinStrategy = this.spinModeFactory.create(mode); } catch { return; }
                 modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
                 btn!.classList.add("is-active");
             });
