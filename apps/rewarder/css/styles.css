@@ -505,11 +505,74 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.6em 1.2em;
+    padding: 1.2em 1em;
     min-height: 170px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Card view (reward pop-up) */
+.card-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 130px;
+    width: 100%;
+}
+
+/* Wheel view */
+.wheel-view {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85em;
+    width: 100%;
+    padding: 0.3em 0;
+}
+
+.wheel-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#wheel-canvas {
+    display: block;
+    width: min(300px, 100%);
+    aspect-ratio: 1;
+}
+
+.wheel-controls {
+    display: flex;
+    gap: 0.6em;
+}
+
+.btn-accelerate {
+    background: var(--surface-2);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    font-size: 0.84em;
+    padding: 0.45em 0.9em;
+}
+.btn-accelerate:hover:not(:disabled) {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: #f59e0b;
+    transform: translateY(-1px);
+}
+
+.btn-skip {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    font-size: 0.84em;
+    padding: 0.45em 0.9em;
+}
+.btn-skip:hover:not(:disabled) {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
 }
 
 .idle-msg {

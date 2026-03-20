@@ -7,10 +7,12 @@ interface RollRecord {
 
 class RewarderApp {
     private svc       = new RewarderService();
+    private wheel!:   SpinningWheel;
     private isRolling = false;
 
     public init(): void {
         this.svc.init();
+        this.wheel = new SpinningWheel(document.getElementById("wheel-canvas") as HTMLCanvasElement);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -43,6 +45,8 @@ class RewarderApp {
         document.getElementById("btn-roll-10")!.addEventListener("click", () => this.doRolls(10));
         document.getElementById("btn-roll-100")!.addEventListener("click",() => this.doRolls(100));
         document.getElementById("btn-reset")!.addEventListener("click",   () => this.resetStats());
+        document.getElementById("btn-accelerate")?.addEventListener("click", () => this.wheel.accelerate());
+        document.getElementById("btn-skip")?.addEventListener("click",       () => this.wheel.skip());
         document.getElementById("btn-add-leaf")!.addEventListener("click",  () => this.addRootLeaf());
         document.getElementById("btn-add-group")!.addEventListener("click", () => this.addRootGroup());
 
@@ -97,11 +101,13 @@ class RewarderApp {
             } else if (target.classList.contains("reward-color-input")) {
                 node.color = (target as HTMLInputElement).value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             } else if (target.classList.contains("reward-border-input")) {
                 node.borderColor = (target as HTMLInputElement).value;
                 this.svc.saveProfileConfig();
+                this.updateWheelSegments();
                 this.renderStats();
                 this.renderHistory();
             }
@@ -117,6 +123,7 @@ class RewarderApp {
             if (target.classList.contains("reward-name-input")) {
                 node.name = (target as HTMLInputElement).value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.svc.rebuildPipeline();
+                this.updateWheelSegments();
             }
         });
 
@@ -165,6 +172,41 @@ class RewarderApp {
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
 
+        if (count === 1) {
+            await this.doSingleRollWithWheel();
+        } else {
+            await this.doMultiRoll(count);
+        }
+
+        this.renderHistory();
+        this.svc.saveCurrentStats();
+        this.isRolling = false;
+        this.setRollButtonsDisabled(false);
+    }
+
+    private async doSingleRollWithWheel(): Promise<void> {
+        const wheelView = document.getElementById("wheel-view")!;
+        const cardView  = document.getElementById("card-view")!;
+
+        wheelView.style.display = "flex";
+        cardView.style.display  = "none";
+        this.setWheelControlsDisabled(false);
+
+        const { reward, rollNum } = await this.svc.roll();
+        await this.wheel.spin(this.wheel.findSegmentIndex(reward.id));
+
+        await sleep(420);
+
+        this.setWheelControlsDisabled(true);
+        wheelView.style.display = "none";
+        cardView.style.display  = "flex";
+
+        this.renderLatestResult(reward, rollNum);
+        this.renderStats();
+        this.renderPityProgress();
+    }
+
+    private async doMultiRoll(count: number): Promise<void> {
         const ANIMATED_MAX = 10;
         const animate = count <= ANIMATED_MAX;
 
@@ -184,11 +226,6 @@ class RewarderApp {
             this.renderStats();
             this.renderPityProgress();
         }
-
-        this.renderHistory();
-        this.svc.saveCurrentStats();
-        this.isRolling = false;
-        this.setRollButtonsDisabled(false);
     }
 
     private setRollButtonsDisabled(disabled: boolean): void {
@@ -196,6 +233,13 @@ class RewarderApp {
             const btn = document.getElementById(id) as HTMLButtonElement | null;
             if (btn) btn.disabled = disabled;
         });
+    }
+
+    private setWheelControlsDisabled(disabled: boolean): void {
+        const accel = document.getElementById("btn-accelerate") as HTMLButtonElement | null;
+        const skip  = document.getElementById("btn-skip")       as HTMLButtonElement | null;
+        if (accel) accel.disabled = disabled;
+        if (skip)  skip.disabled  = disabled;
     }
 
     private resetStats(): void {
@@ -240,6 +284,12 @@ class RewarderApp {
     // ===== Renders =====
 
     private renderAll(): void {
+        const wheelView = document.getElementById("wheel-view");
+        const cardView  = document.getElementById("card-view");
+        if (wheelView) wheelView.style.display = "none";
+        if (cardView)  cardView.style.display  = "flex";
+        this.setWheelControlsDisabled(true);
+
         const pityDisplay = this.svc.pityEnabled ? "flex" : "none";
         const row = document.getElementById("pity-config-row");
         if (row) row.style.display = pityDisplay;
@@ -269,6 +319,7 @@ class RewarderApp {
         if (!list) return;
         list.innerHTML = this.svc.rewardNodes.map(node => this.renderRootNode(node)).join("");
         this.renderPityTargetPicker();
+        this.updateWheelSegments();
     }
 
     private renderRootNode(node: RewardNodeConfig): string {
@@ -357,7 +408,7 @@ class RewarderApp {
     }
 
     private renderLatestResult(reward: Reward | null, rollNum: number): void {
-        const container = document.getElementById("latest-result");
+        const container = document.getElementById("card-view");
         if (!container) return;
 
         if (!reward) {
@@ -460,6 +511,36 @@ class RewarderApp {
                 </div>
             `;
         }).join("");
+    }
+
+    // ===== Wheel helpers =====
+
+    private updateWheelSegments(): void {
+        const leaves   = collectLeaves(this.svc.rewardNodes);
+        const segments: WheelSegment[] = leaves.map(leaf => ({
+            id:          leaf.id,
+            name:        leaf.name,
+            color:       leaf.color,
+            borderColor: leaf.borderColor,
+            weight:      this.effectiveWeight(leaf.id),
+        }));
+        this.wheel.setSegments(segments);
+    }
+
+    private effectiveWeight(
+        leafId:         string,
+        nodes:          RewardNodeConfig[] = this.svc.rewardNodes,
+        parentFraction: number             = 1,
+    ): number {
+        for (const node of nodes) {
+            if (node.isGroup) {
+                const w = this.effectiveWeight(leafId, node.children, parentFraction * node.rate / 100);
+                if (w >= 0) return w;
+            } else if (node.id === leafId) {
+                return parentFraction * node.rate / 100;
+            }
+        }
+        return -1;  // not found
     }
 }
 

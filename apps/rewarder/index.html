@@ -91,7 +91,20 @@
 
                     <!-- Latest Result -->
                     <div class="result-section" id="latest-result">
-                        <div class="idle-msg">Roll to get started!</div>
+                        <!-- Wheel view (shown during Roll ×1) -->
+                        <div id="wheel-view" class="wheel-view" style="display:none">
+                            <div class="wheel-wrap">
+                                <canvas id="wheel-canvas" width="300" height="300"></canvas>
+                            </div>
+                            <div class="wheel-controls">
+                                <button id="btn-accelerate" class="btn btn-accelerate" disabled>&#x26A1; Accelerate</button>
+                                <button id="btn-skip"       class="btn btn-skip"       disabled>&#x23ED; Skip</button>
+                            </div>
+                        </div>
+                        <!-- Card view (shown after roll or for multi-rolls) -->
+                        <div id="card-view" class="card-view">
+                            <div class="idle-msg">Roll to get started!</div>
+                        </div>
                     </div>
 
                     <!-- Statistics -->
