@@ -102,14 +102,27 @@ body {
 }
 
 .play-primary {
-    flex: 0 0 340px;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 1em;
 }
 
+/* Constrain the wheel+card and roll controls to a comfortable width */
+.play-primary .result-section {
+    width: 100%;
+    max-width: 600px;
+}
+
+.play-primary .roll-section {
+    width: 100%;
+    max-width: 480px;
+}
+
 .play-secondary {
-    flex: 1;
+    flex: 0 0 260px;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -120,8 +133,64 @@ body {
 .config-layout {
     display: flex;
     flex-direction: column;
-    gap: 1em;
-    max-width: 680px;
+    gap: 0.85em;
+}
+
+/* Collapsible group */
+.config-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.config-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
+    padding: 0.8em 1.1em;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    transition: background 0.15s;
+}
+.config-group-header::-webkit-details-marker { display: none; }
+.config-group-header:hover { background: var(--accent-dim); }
+
+details[open] > .config-group-header {
+    border-bottom: 1px solid var(--border);
+}
+
+.config-group-title {
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.config-group-chevron {
+    font-size: 0.95em;
+    color: var(--text-dim);
+    transition: transform 0.22s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+details[open] > .config-group-header .config-group-chevron {
+    transform: rotate(180deg);
+}
+
+.config-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+    padding: 1em 1.1em;
+}
+
+/* Inner sections inside a group sit one level deeper visually */
+.config-group-body .config-section {
+    background: var(--surface-2);
 }
 
 .config-section {
@@ -576,7 +645,7 @@ body {
 
 #wheel-canvas {
     display: block;
-    width: min(300px, 100%);
+    width: min(520px, 100%);
     aspect-ratio: 1;
 }
 
@@ -766,10 +835,10 @@ body {
 
 /* ===== Responsive ===== */
 
-/* Tablet: tighten the primary column */
+/* Tablet: tighten the secondary sidebar */
 @media (max-width: 900px) {
-    .play-primary {
-        flex: 0 0 300px;
+    .play-secondary {
+        flex: 0 0 230px;
     }
 }
 
@@ -797,6 +866,13 @@ body {
     .play-secondary {
         flex: none;
         width: 100%;
+    }
+    .play-primary .result-section,
+    .play-primary .roll-section {
+        max-width: 100%;
+    }
+    .config-layout {
+        gap: 0.65em;
     }
     .roll-buttons {
         display: grid;

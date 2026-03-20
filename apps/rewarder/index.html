@@ -34,7 +34,7 @@
                             <!-- Wheel view -->
                             <div id="wheel-view" class="wheel-view">
                                 <div class="wheel-wrap">
-                                    <canvas id="wheel-canvas" width="300" height="300"></canvas>
+                                    <canvas id="wheel-canvas" width="500" height="500"></canvas>
                                 </div>
                                 <div class="wheel-controls">
                                     <div class="wheel-mode-selector" id="wheel-mode-selector" role="group" aria-label="Spin mode">
@@ -51,7 +51,7 @@
                         </div>
 
                         <!-- Roll buttons -->
-                        <section class="config-section">
+                        <section class="config-section roll-section">
                             <div class="roll-buttons">
                                 <button class="btn btn-roll"       id="btn-roll">Roll ×1</button>
                                 <button class="btn btn-roll-multi" id="btn-roll-10">Roll ×10</button>
@@ -105,59 +105,80 @@
             <div class="tab-panel is-hidden" id="tab-config" role="tabpanel">
                 <div class="config-layout">
 
-                    <section class="config-section profile-section">
-                        <div class="profile-row">
-                            <select id="profile-select" class="profile-select">
-                                <!-- populated by JS -->
-                            </select>
-                            <button id="btn-new-profile" class="btn-icon" title="New profile">+</button>
-                            <button id="btn-delete-profile" class="btn-icon" title="Delete profile">&#xd7;</button>
-                        </div>
-                        <div class="profile-name-row">
-                            <label class="profile-name-label" for="profile-name">Name</label>
-                            <input type="text" id="profile-name" class="profile-name-input" placeholder="Profile name">
-                        </div>
-                    </section>
+                    <!-- Rewards group: profile selector + reward tree -->
+                    <details class="config-group" open>
+                        <summary class="config-group-header">
+                            <span class="config-group-title">Rewards</span>
+                            <span class="config-group-chevron">&#x25BE;</span>
+                        </summary>
+                        <div class="config-group-body">
 
-                    <section class="config-section">
-                        <div class="rewards-editor-header">
-                            <h2 class="section-title" style="margin-bottom:0">Rewards</h2>
-                            <div class="add-node-buttons">
-                                <button id="btn-add-leaf" class="btn-add-node">+ Reward</button>
-                                <button id="btn-add-group" class="btn-add-node">+ Group</button>
-                            </div>
-                        </div>
-                        <div id="reward-list">
-                            <!-- populated by JS -->
-                        </div>
-                        <div class="rate-summary">
-                            Overall: <span id="total-rate">100.00</span>%
-                            <span class="rate-warning-inline" id="rate-warning" style="display:none">⚠ must sum to 100</span>
-                        </div>
-                    </section>
+                            <section class="config-section profile-section">
+                                <div class="profile-row">
+                                    <select id="profile-select" class="profile-select">
+                                        <!-- populated by JS -->
+                                    </select>
+                                    <button id="btn-new-profile" class="btn-icon" title="New profile">+</button>
+                                    <button id="btn-delete-profile" class="btn-icon" title="Delete profile">&#xd7;</button>
+                                </div>
+                                <div class="profile-name-row">
+                                    <label class="profile-name-label" for="profile-name">Name</label>
+                                    <input type="text" id="profile-name" class="profile-name-input" placeholder="Profile name">
+                                </div>
+                            </section>
 
-                    <section class="config-section">
-                        <h2 class="section-title">Pity System</h2>
-                        <div class="pity-toggle-row">
-                            <label class="toggle-label" for="pity-toggle">Hard Pity</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="pity-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <section class="config-section">
+                                <div class="rewards-editor-header">
+                                    <h2 class="section-title" style="margin-bottom:0">Rewards</h2>
+                                    <div class="add-node-buttons">
+                                        <button id="btn-add-leaf" class="btn-add-node">+ Reward</button>
+                                        <button id="btn-add-group" class="btn-add-node">+ Group</button>
+                                    </div>
+                                </div>
+                                <div id="reward-list">
+                                    <!-- populated by JS -->
+                                </div>
+                                <div class="rate-summary">
+                                    Overall: <span id="total-rate">100.00</span>%
+                                    <span class="rate-warning-inline" id="rate-warning" style="display:none">⚠ must sum to 100</span>
+                                </div>
+                            </section>
+
                         </div>
-                        <div class="pity-config-row" id="pity-config-row">
-                            <label class="pity-label" for="pity-threshold">Threshold</label>
-                            <input type="number" id="pity-threshold" class="pity-input"
-                                value="90" min="1" max="9999" step="1">
-                            <span class="pity-unit">rolls</span>
+                    </details>
+
+                    <!-- Pity group: one section per supported pity type -->
+                    <details class="config-group" open>
+                        <summary class="config-group-header">
+                            <span class="config-group-title">Pity</span>
+                            <span class="config-group-chevron">&#x25BE;</span>
+                        </summary>
+                        <div class="config-group-body">
+
+                            <section class="config-section pity-section">
+                                <div class="pity-toggle-row">
+                                    <h2 class="section-title" style="margin-bottom:0">Hard Pity</h2>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="pity-toggle" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="pity-config-row" id="pity-config-row">
+                                    <label class="pity-label" for="pity-threshold">Threshold</label>
+                                    <input type="number" id="pity-threshold" class="pity-input"
+                                        value="90" min="1" max="9999" step="1">
+                                    <span class="pity-unit">rolls</span>
+                                </div>
+                                <div class="pity-config-row pity-target-row" id="pity-target-row">
+                                    <label class="pity-label" for="pity-target">Target</label>
+                                    <select id="pity-target" class="pity-target-select">
+                                        <!-- populated by JS -->
+                                    </select>
+                                </div>
+                            </section>
+
                         </div>
-                        <div class="pity-config-row pity-target-row" id="pity-target-row">
-                            <label class="pity-label" for="pity-target">Target</label>
-                            <select id="pity-target" class="pity-target-select">
-                                <!-- populated by JS -->
-                            </select>
-                        </div>
-                    </section>
+                    </details>
 
                 </div>
             </div>
