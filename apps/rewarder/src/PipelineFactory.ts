@@ -4,7 +4,7 @@ function buildPipeline(
     pityThreshold: number,
     pityTargetConfig: RewardNodeConfig | null,
 ): { pipeline: RewardPipeline<Reward>; pityInterceptor: HardPityInterceptor | null } {
-    const treeFactory = new DynamicRewardTreeFactory(nodes);
+    const treeFactory = new RewardTreeFactory(nodes);
     const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
     const collector   = new SubtreeRewardCollector<Reward>();
     const resolver    = new RewardResolver<Reward>(walker, collector);
