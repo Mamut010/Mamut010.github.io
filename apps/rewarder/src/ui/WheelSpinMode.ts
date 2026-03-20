@@ -1,18 +1,25 @@
 // ===== Wheel Spin Mode (Strategy Pattern) =====
 
+const WheelSpinStrategyCode = {
+    Normal: "normal",
+    Accelerate: "accelerate",
+    Skip: "skip",
+} as const;
+type WheelSpinStrategyCode = typeof WheelSpinStrategyCode[keyof typeof WheelSpinStrategyCode];
+
 interface IWheelSpinStrategy {
-    readonly id:    "normal" | "accelerate" | "skip";
+    readonly id:    WheelSpinStrategyCode;
     readonly label: string;
     execute(wheel: SpinningWheel, targetIndex: number): Promise<void>;
 }
 
 interface IWheelSpinStrategyFactory {
-    create(id: IWheelSpinStrategy["id"]): IWheelSpinStrategy;
+    create(id: WheelSpinStrategyCode): IWheelSpinStrategy;
     allModes(): ReadonlyArray<IWheelSpinStrategy>;
 }
 
 class NormalSpinStrategy implements IWheelSpinStrategy {
-    readonly id    = "normal" as const;
+    readonly id    = WheelSpinStrategyCode.Normal;
     readonly label = "Normal";
     execute(wheel: SpinningWheel, targetIndex: number): Promise<void> {
         return wheel.spin(targetIndex, { modeId: this.id });
@@ -20,8 +27,8 @@ class NormalSpinStrategy implements IWheelSpinStrategy {
 }
 
 class AccelerateSpinStrategy implements IWheelSpinStrategy {
-    readonly id    = "accelerate" as const;
-    readonly label = "⚡ Fast";
+    readonly id    = WheelSpinStrategyCode.Accelerate;
+    readonly label = "Fast";
     execute(wheel: SpinningWheel, targetIndex: number): Promise<void> {
         const p = wheel.spin(targetIndex, { modeId: this.id });
         wheel.accelerate();
@@ -30,8 +37,8 @@ class AccelerateSpinStrategy implements IWheelSpinStrategy {
 }
 
 class SkipSpinStrategy implements IWheelSpinStrategy {
-    readonly id    = "skip" as const;
-    readonly label = "⏭ Skip";
+    readonly id    = WheelSpinStrategyCode.Skip;
+    readonly label = "Skip";
     execute(wheel: SpinningWheel, targetIndex: number): Promise<void> {
         const p = wheel.spin(targetIndex, { modeId: this.id });
         wheel.skip();
@@ -40,13 +47,13 @@ class SkipSpinStrategy implements IWheelSpinStrategy {
 }
 
 class WheelSpinModeFactory implements IWheelSpinStrategyFactory {
-    private readonly registry = new Map<IWheelSpinStrategy["id"], IWheelSpinStrategy>([
-        ["normal",      new NormalSpinStrategy()],
-        ["accelerate",  new AccelerateSpinStrategy()],
-        ["skip",        new SkipSpinStrategy()],
+    private readonly registry = new Map<WheelSpinStrategyCode, IWheelSpinStrategy>([
+        [WheelSpinStrategyCode.Normal,      new NormalSpinStrategy()],
+        [WheelSpinStrategyCode.Accelerate,  new AccelerateSpinStrategy()],
+        [WheelSpinStrategyCode.Skip,        new SkipSpinStrategy()],
     ]);
 
-    create(id: IWheelSpinStrategy["id"]): IWheelSpinStrategy {
+    create(id: WheelSpinStrategyCode): IWheelSpinStrategy {
         const strategy = this.registry.get(id);
         if (!strategy) throw new Error(`Unknown spin mode: ${id}`);
         return strategy;

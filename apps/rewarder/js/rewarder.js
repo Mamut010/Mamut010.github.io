@@ -628,9 +628,14 @@ class TwoPhaseWheelAnimator {
     }
 }
 // ===== Wheel Spin Mode (Strategy Pattern) =====
+const WheelSpinStrategyCode = {
+    Normal: "normal",
+    Accelerate: "accelerate",
+    Skip: "skip",
+};
 class NormalSpinStrategy {
     constructor() {
-        this.id = "normal";
+        this.id = WheelSpinStrategyCode.Normal;
         this.label = "Normal";
     }
     execute(wheel, targetIndex) {
@@ -639,8 +644,8 @@ class NormalSpinStrategy {
 }
 class AccelerateSpinStrategy {
     constructor() {
-        this.id = "accelerate";
-        this.label = "⚡ Fast";
+        this.id = WheelSpinStrategyCode.Accelerate;
+        this.label = "Fast";
     }
     execute(wheel, targetIndex) {
         const p = wheel.spin(targetIndex, { modeId: this.id });
@@ -650,8 +655,8 @@ class AccelerateSpinStrategy {
 }
 class SkipSpinStrategy {
     constructor() {
-        this.id = "skip";
-        this.label = "⏭ Skip";
+        this.id = WheelSpinStrategyCode.Skip;
+        this.label = "Skip";
     }
     execute(wheel, targetIndex) {
         const p = wheel.spin(targetIndex, { modeId: this.id });
@@ -662,9 +667,9 @@ class SkipSpinStrategy {
 class WheelSpinModeFactory {
     constructor() {
         this.registry = new Map([
-            ["normal", new NormalSpinStrategy()],
-            ["accelerate", new AccelerateSpinStrategy()],
-            ["skip", new SkipSpinStrategy()],
+            [WheelSpinStrategyCode.Normal, new NormalSpinStrategy()],
+            [WheelSpinStrategyCode.Accelerate, new AccelerateSpinStrategy()],
+            [WheelSpinStrategyCode.Skip, new SkipSpinStrategy()],
         ]);
     }
     create(id) {
@@ -747,9 +752,9 @@ class UndershootAngleCalculator {
  */
 class WeightedRandomCalculatorFactory {
     create(context) {
-        if (context.modeId === "skip")
+        if (context.modeId === WheelSpinStrategyCode.Skip)
             return WeightedRandomCalculatorFactory.NATURAL_ONLY;
-        const pool = context.modeId === "accelerate"
+        const pool = context.modeId === WheelSpinStrategyCode.Accelerate
             ? WeightedRandomCalculatorFactory.ACCEL_POOL
             : WeightedRandomCalculatorFactory.NORMAL_POOL;
         const items = pool.map(([calc]) => calc);
@@ -1183,7 +1188,7 @@ class RewarderApp {
     }
     init() {
         this.svc.init();
-        this.spinStrategy = this.spinModeFactory.create("normal");
+        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas = document.getElementById("wheel-canvas");
         const drawer = new CanvasWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();

@@ -2,7 +2,7 @@
 
 /** Context passed from the active spin mode into the calculator factory. */
 interface SpinContext {
-    modeId: IWheelSpinStrategy["id"];
+    modeId: WheelSpinStrategyCode;
 }
 
 /**
@@ -127,9 +127,9 @@ class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory
     private static readonly NATURAL_ONLY = new NaturalAngleCalculator();
 
     create(context: SpinContext): ISpinningAngleCalculator {
-        if (context.modeId === "skip") return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        if (context.modeId === WheelSpinStrategyCode.Skip) return WeightedRandomCalculatorFactory.NATURAL_ONLY;
 
-        const pool = context.modeId === "accelerate"
+        const pool = context.modeId === WheelSpinStrategyCode.Accelerate
             ? WeightedRandomCalculatorFactory.ACCEL_POOL
             : WeightedRandomCalculatorFactory.NORMAL_POOL;
 
