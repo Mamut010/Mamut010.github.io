@@ -16,18 +16,26 @@ class SpinningWheel {
     private segAngles: Array<{ start: number; mid: number; sweep: number }> = [];
 
     // Animation state
-    private currentRotation  = 0;
-    private spinFromRotation = 0;
-    private targetRotation   = 0;
-    private spinStartTime    = 0;
-    private spinDuration     = 0;
+    private currentRotation    = 0;
+    private spinFromRotation   = 0;
+    private finalRotation      = 0;
+    private overshootRotation: number | null = null;
+    private phase1StartTime    = 0;
+    private phase1Duration     = 0;
+    private phase2StartTime    = 0;
+    private phase2Duration     = 0;
+    private inPhase2           = false;
 
     private rafId:              number | null = null;
     private resolveSpinPromise: (() => void)  | null = null;
 
+    private readonly calculator: ISpinningAngleCalculator = new BounceAngleCalculator();
+
     private static readonly NORMAL_DURATION = 4000;   // ms for a full spin
     private static readonly ACCEL_CAP_MS   = 900;     // max remaining ms after accelerate()
     private static readonly MIN_SPINS      = 6;       // minimum full rotations before stopping
+    private static readonly PHASE1_FRAC    = 0.92;    // fraction of total duration for forward spin
+    private static readonly MIN_SEG_FRAC   = 0.028;   // minimum visual fraction per segment (~10°)
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -60,24 +68,32 @@ class SpinningWheel {
         this.resolveSpinPromise = null;
         oldResolve?.();
 
-        const targetMid = this.segAngles[targetIndex]?.mid ?? 0;
+        const TAU    = 2 * Math.PI;
+        const angles = this.segAngles[targetIndex] ?? { start: 0, mid: 0, sweep: TAU };
+        const landing = this.calculator.calculate(angles);
 
-        // We want the segment's midpoint to land exactly under the pointer (top, screen angle = -π/2).
-        // In draw(), the arc for segment i starts at: segAngles[i].start + rot - π/2
-        // Segment i is under the pointer when:
-        //   segAngles[i].mid + rot - π/2  ≡  -π/2  (mod 2π)
-        //   ⟹  segAngles[i].mid + rot ≡ 0  (mod 2π)
-        //   ⟹  rot ≡ -segAngles[i].mid   (mod 2π)
-        const targetRot     = ((-targetMid) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-        const currentNorm   = ((this.currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-        let   delta         = targetRot - currentNorm;
-        if (delta <= 0) delta += 2 * Math.PI;     // always spin at least a tiny bit forward
-        delta += SpinningWheel.MIN_SPINS * 2 * Math.PI;
+        // Compute how much to rotate so that landing.landingAngle faces the pointer at top.
+        // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π)  ⟹  rot ≡ -a
+        const targetRot   = ((-landing.landingAngle % TAU) + TAU) % TAU;
+        const currentNorm = ((this.currentRotation % TAU) + TAU) % TAU;
+        let   delta       = targetRot - currentNorm;
+        if (delta <= 0) delta += TAU;
+        delta += SpinningWheel.MIN_SPINS * TAU;
 
+        this.inPhase2         = false;
         this.spinFromRotation = this.currentRotation;
-        this.targetRotation   = this.currentRotation + delta;
-        this.spinStartTime    = performance.now();
-        this.spinDuration     = SpinningWheel.NORMAL_DURATION;
+        this.finalRotation    = this.currentRotation + delta;
+
+        if (landing.overshootDelta != null && landing.overshootDelta > 0) {
+            this.overshootRotation = this.finalRotation + landing.overshootDelta;
+            this.phase1Duration    = SpinningWheel.NORMAL_DURATION * SpinningWheel.PHASE1_FRAC;
+            this.phase2Duration    = SpinningWheel.NORMAL_DURATION * (1 - SpinningWheel.PHASE1_FRAC);
+        } else {
+            this.overshootRotation = null;
+            this.phase1Duration    = SpinningWheel.NORMAL_DURATION;
+            this.phase2Duration    = 0;
+        }
+        this.phase1StartTime = performance.now();
 
         return new Promise<void>(resolve => {
             this.resolveSpinPromise = resolve;
@@ -88,28 +104,31 @@ class SpinningWheel {
     /** Speed up the current spin so it finishes within ACCEL_CAP_MS. */
     accelerate(): void {
         if (this.rafId === null) return;
-        const elapsed = performance.now() - this.spinStartTime;
-        if (elapsed >= this.spinDuration) return;
+        // If already in the bounce-back phase, just snap to final.
+        if (this.inPhase2) { this.finishSpin(); return; }
 
-        // Rebase the animation from the current visual position with a shorter duration.
-        const t       = Math.min(elapsed / this.spinDuration, 1);
-        const curPos  = this.spinFromRotation + this.easeOutQuart(t) * (this.targetRotation - this.spinFromRotation);
-        this.spinFromRotation = curPos;
-        this.currentRotation  = curPos;
-        this.spinStartTime    = performance.now();
-        this.spinDuration     = SpinningWheel.ACCEL_CAP_MS;
+        const elapsed = performance.now() - this.phase1StartTime;
+        if (elapsed >= this.phase1Duration) return;
+
+        // Rebase from the current visual position, targeting finalRotation (droppping bounce).
+        const phase1Target = this.overshootRotation ?? this.finalRotation;
+        const t            = Math.min(elapsed / this.phase1Duration, 1);
+        const curPos       = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
+
+        this.overshootRotation = null;
+        this.phase2Duration    = 0;
+        this.spinFromRotation  = curPos;
+        this.currentRotation   = curPos;
+        this.phase1StartTime   = performance.now();
+        this.phase1Duration    = SpinningWheel.ACCEL_CAP_MS;
     }
 
     /** Instantly jump to the final position and resolve the spin promise. */
     skip(): void {
         if (this.rafId === null) return;
         cancelAnimationFrame(this.rafId);
-        this.rafId            = null;
-        this.currentRotation  = this.targetRotation;
-        this.draw();
-        const resolve         = this.resolveSpinPromise;
-        this.resolveSpinPromise = null;
-        resolve?.();
+        this.rafId = null;
+        this.finishSpin();
     }
 
     // ===== Drawing =====
@@ -166,18 +185,20 @@ class SpinningWheel {
         for (let i = 0; i < this.segments.length; i++) {
             const seg    = this.segments[i];
             const angles = this.segAngles[i];
-            if (angles.sweep < 0.14) continue;     // too narrow to label
 
             const midA   = angles.mid + rot + offset;
-            const txtR   = r * 0.60;
+            const txtR   = r * 0.62;
             const arcLen = angles.sweep * txtR;     // arc length at label radius
 
-            const fontSize = Math.max(9, Math.min(13, r * 0.09));
-            const maxChars = Math.floor(arcLen / (fontSize * 0.70));
-            if (maxChars <= 2) continue;
+            // Font adapts to both canvas size and available arc length.
+            const fontSize = Math.max(8, Math.min(13, r * 0.09, arcLen * 0.45));
+            const maxChars = Math.floor(arcLen / (fontSize * 0.62));
+            if (maxChars < 1) continue;
 
             let label = seg.name;
-            if (label.length > maxChars) label = label.slice(0, maxChars - 1) + "\u2026";
+            if (label.length > maxChars) {
+                label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
+            }
 
             ctx.save();
             ctx.translate(cx, cy);
@@ -240,22 +261,52 @@ class SpinningWheel {
     }
 
     private frame(): void {
-        const elapsed = performance.now() - this.spinStartTime;
+        const now = performance.now();
 
-        if (elapsed >= this.spinDuration) {
-            this.currentRotation = this.targetRotation;
-            this.draw();
-            this.rafId           = null;
-            const resolve        = this.resolveSpinPromise;
-            this.resolveSpinPromise = null;
-            resolve?.();
-            return;
+        if (!this.inPhase2) {
+            // Phase 1: forward spin toward overshootRotation (bounce) or finalRotation (no bounce).
+            const phase1Target = this.overshootRotation ?? this.finalRotation;
+            const elapsed      = now - this.phase1StartTime;
+            if (elapsed >= this.phase1Duration) {
+                this.currentRotation = phase1Target;
+                this.draw();
+                if (this.overshootRotation != null) {
+                    // Transition to phase 2: ease back to finalRotation.
+                    this.inPhase2         = true;
+                    this.spinFromRotation = phase1Target;
+                    this.phase2StartTime  = now;
+                    this.scheduleFrame();
+                } else {
+                    this.finishSpin();
+                }
+                return;
+            }
+            const t = elapsed / this.phase1Duration;
+            this.currentRotation = this.spinFromRotation + this.easeOutQuart(t) * (phase1Target - this.spinFromRotation);
+        } else {
+            // Phase 2: gentle ease-back from overshootRotation to finalRotation.
+            const elapsed = now - this.phase2StartTime;
+            if (elapsed >= this.phase2Duration) {
+                this.finishSpin();
+                return;
+            }
+            const t = elapsed / this.phase2Duration;
+            this.currentRotation = this.spinFromRotation + this.easeInQuad(t) * (this.finalRotation - this.spinFromRotation);
         }
 
-        const t = elapsed / this.spinDuration;
-        this.currentRotation = this.spinFromRotation + this.easeOutQuart(t) * (this.targetRotation - this.spinFromRotation);
         this.draw();
         this.scheduleFrame();
+    }
+
+    private finishSpin(): void {
+        this.currentRotation    = this.finalRotation;
+        this.inPhase2           = false;
+        this.overshootRotation  = null;
+        this.rafId              = null;
+        this.draw();
+        const resolve           = this.resolveSpinPromise;
+        this.resolveSpinPromise = null;
+        resolve?.();
     }
 
     /** Ease-out quart: fast start, dramatic slow-down at the end. */
@@ -263,18 +314,45 @@ class SpinningWheel {
         return 1 - Math.pow(1 - Math.min(t, 1), 4);
     }
 
+    /** Ease-in quad: starts slow then accelerates (used for the bounce-back phase). */
+    private easeInQuad(t: number): number {
+        return Math.min(t, 1) ** 2;
+    }
+
     // ===== Helpers =====
 
     private computeAngles(segs: WheelSegment[]): Array<{ start: number; mid: number; sweep: number }> {
-        const total  = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
+        if (segs.length === 0) return [];
+
+        const TAU   = 2 * Math.PI;
+        const total = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
+
+        // Compute visual fractions with a minimum floor so tiny segments stay visible.
+        // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
+        // Iterate until stable (convergence typically takes 1-2 passes).
+        const frac = segs.map(s => s.weight / total);
+        const MIN  = SpinningWheel.MIN_SEG_FRAC;
+        for (let iter = 0; iter < 8; iter++) {
+            const smallIdx = frac.reduce<number[]>((acc, f, i) => { if (f < MIN) acc.push(i); return acc; }, []);
+            if (smallIdx.length === 0) break;
+
+            const reserved   = smallIdx.length * MIN;
+            if (reserved >= 1) { frac.fill(1 / segs.length); break; }   // pathological: equal split
+
+            const largeTotal = frac.reduce((s, f, i) => s + (frac[i] < MIN ? 0 : f), 0);
+            const scale      = (1 - reserved) / largeTotal;
+            for (let i = 0; i < frac.length; i++) {
+                frac[i] = frac[i] < MIN ? MIN : frac[i] * scale;
+            }
+        }
+
         const result: Array<{ start: number; mid: number; sweep: number }> = [];
-        let   cum    = 0;
-        for (const seg of segs) {
-            const frac  = seg.weight / total;
-            const start = cum * 2 * Math.PI;
-            const sweep = frac * 2 * Math.PI;
+        let   cum = 0;
+        for (let i = 0; i < segs.length; i++) {
+            const start = cum * TAU;
+            const sweep = frac[i] * TAU;
             result.push({ start, mid: start + sweep / 2, sweep });
-            cum += frac;
+            cum += frac[i];
         }
         return result;
     }

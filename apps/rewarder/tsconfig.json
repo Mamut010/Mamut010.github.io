@@ -40,6 +40,7 @@
         "src/utils/DomUtils.ts",
         "src/Storage.ts",
         "./src/ui/WheelSpinMode.ts",
+        "./src/ui/SpinningAngleCalculator.ts",
         "./src/ui/SpinningWheel.ts",
         "./src/RewarderService.ts",
         "./src/app.ts"
