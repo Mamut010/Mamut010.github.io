@@ -156,6 +156,7 @@ class RewarderApp {
                 node.name = (target as HTMLInputElement).value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.svc.rebuildPipeline();
                 this.updateWheelSegments();
+                this.renderPityTargetPicker();
             }
         });
 

@@ -441,8 +441,9 @@ details[open] > .config-group-header .config-group-chevron {
     display: flex;
     align-items: center;
     gap: 0.5em;
+    max-width: 340px;
 }
-.pity-label { font-size: 0.8em; color: var(--text-muted); flex: 1; }
+.pity-label { font-size: 0.8em; color: var(--text-muted); flex: 0 0 80px; }
 .pity-unit  { font-size: 0.78em; color: var(--text-muted); }
 
 .pity-input {
@@ -732,7 +733,7 @@ details[open] > .config-group-header .config-group-chevron {
 
 .stat-row {
     display: grid;
-    grid-template-columns: 120px 1fr 96px;
+    grid-template-columns: 90px 1fr 82px;
     align-items: center;
     gap: 0.8em;
     margin-bottom: 0.72em;
@@ -761,8 +762,8 @@ details[open] > .config-group-header .config-group-chevron {
     gap: 0.5em;
     font-size: 0.82em;
 }
-.stat-count { color: var(--text); font-weight: 700; min-width: 28px; text-align: right; }
-.stat-pct   { color: var(--text-muted); min-width: 44px; text-align: right; }
+.stat-count { color: var(--text); font-weight: 700; min-width: 22px; text-align: right; }
+.stat-pct   { color: var(--text-muted); min-width: 40px; text-align: right; }
 
 /* Pity progress */
 .pity-progress-section {
@@ -839,6 +840,9 @@ details[open] > .config-group-header .config-group-chevron {
 @media (max-width: 900px) {
     .play-secondary {
         flex: 0 0 230px;
+    }
+    .stat-row {
+        grid-template-columns: 70px 1fr 74px;
     }
 }
 

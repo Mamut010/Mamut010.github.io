@@ -1331,6 +1331,7 @@ class RewarderApp {
                 node.name = target.value.trim() || (node.isGroup ? "Group" : "Reward");
                 this.svc.rebuildPipeline();
                 this.updateWheelSegments();
+                this.renderPityTargetPicker();
             }
         });
         list.addEventListener("click", (e) => {
