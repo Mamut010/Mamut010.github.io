@@ -17,59 +17,65 @@ type PipelineBuildingResult = {
     featuredPityInterceptors: FeaturedPityInterceptor[];
 };
 
-function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
-    const {
-        nodes,
-        pityEnabled,
-        pityThreshold,
-        pityTargetConfig,
-        stdPityEnabled,
-        stdPityThreshold,
-        stdPityNodes,
-        featuredPityEnabled,
-        featuredConfigs,
-    } = params;
+interface IPipelineFactory {
+    create(params: PipelineBuildingParams): PipelineBuildingResult;
+}
 
-    const treeFactory   = new RewardTreeFactory(nodes);
-    const walkPlanner   = new WeightedUntilLeafTreeWalkPlanner<Reward>();
-    const collector     = new SubtreeRewardCollector<Reward>();
-    const resolver      = new RewardResolver<Reward>(walkPlanner, collector);
-    const pipeline      = new RewardPipeline(treeFactory, resolver);
+class PipelineFactory implements IPipelineFactory {
+    create(params: PipelineBuildingParams): PipelineBuildingResult {
+        const {
+            nodes,
+            pityEnabled,
+            pityThreshold,
+            pityTargetConfig,
+            stdPityEnabled,
+            stdPityThreshold,
+            stdPityNodes,
+            featuredPityEnabled,
+            featuredConfigs,
+        } = params;
 
-    let pityInterceptor:    HardPityInterceptor    | null = null;
-    let stdPityInterceptor: StandardPityInterceptor | null = null;
-    const featuredPityInterceptors: FeaturedPityInterceptor[] = [];
+        const treeFactory   = new RewardTreeFactory(nodes);
+        const walkPlanner   = new WeightedUntilLeafTreeWalkPlanner<Reward>();
+        const collector     = new SubtreeRewardCollector<Reward>();
+        const resolver      = new RewardResolver<Reward>(walkPlanner, collector);
+        const pipeline      = new RewardPipeline(treeFactory, resolver);
 
-    if (featuredPityEnabled) {
-        for (const cfg of featuredConfigs) {
-            featuredPityInterceptors.push(
-                new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured),
-            );
+        let pityInterceptor:    HardPityInterceptor    | null = null;
+        let stdPityInterceptor: StandardPityInterceptor | null = null;
+        const featuredPityInterceptors: FeaturedPityInterceptor[] = [];
+
+        if (featuredPityEnabled) {
+            for (const cfg of featuredConfigs) {
+                featuredPityInterceptors.push(
+                    new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured),
+                );
+            }
         }
-    }
 
-    if (stdPityEnabled && stdPityNodes.length > 0) {
-        const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
-        if (Math.abs(stdTotal - 100) < 0.001) {
-            stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+        if (stdPityEnabled && stdPityNodes.length > 0) {
+            const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
+            if (Math.abs(stdTotal - 100) < 0.001) {
+                stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+            }
         }
-    }
 
-    if (pityEnabled) {
-        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
-        if (targetConfig) {
-            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+        if (pityEnabled) {
+            const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+            if (targetConfig) {
+                pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+            }
         }
+
+        // Featured outermost (outgoing priority — final say over result),
+        // then Standard (may override tree), then Hard (forces specific node).
+        const interceptors: IRewardInterceptor<Reward>[] = [
+            ...featuredPityInterceptors,
+            ...(stdPityInterceptor ? [stdPityInterceptor] : []),
+            ...(pityInterceptor    ? [pityInterceptor]    : []),
+        ];
+        pipeline.setInterceptors(interceptors);
+
+        return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
     }
-
-    // Featured outermost (outgoing priority — final say over result),
-    // then Standard (may override tree), then Hard (forces specific node).
-    const interceptors: IRewardInterceptor<Reward>[] = [
-        ...featuredPityInterceptors,
-        ...(stdPityInterceptor ? [stdPityInterceptor] : []),
-        ...(pityInterceptor    ? [pityInterceptor]    : []),
-    ];
-    pipeline.setInterceptors(interceptors);
-
-    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
 }

@@ -281,6 +281,10 @@ class RewardPipeline {
         };
     }
 }
+const PityNodeKind = {
+    Leaf: "leaf",
+    Group: "group",
+};
 function collectLeaves(nodes) {
     const result = [];
     for (const node of nodes) {
@@ -297,11 +301,11 @@ function collectPityChoices(nodes, indent = "") {
     const result = [];
     for (const node of nodes) {
         if (node.isGroup) {
-            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: "group" });
+            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: PityNodeKind.Group });
             result.push(...collectPityChoices(node.children, indent + "\u00a0\u00a0"));
         }
         else {
-            result.push({ id: node.id, label: indent + node.name, kind: "leaf" });
+            result.push({ id: node.id, label: indent + node.name, kind: PityNodeKind.Leaf });
         }
     }
     return result;
@@ -370,42 +374,44 @@ class RewardTreeFactory {
         return groupNode;
     }
 }
-function buildPipeline(params) {
-    const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
-    const treeFactory = new RewardTreeFactory(nodes);
-    const walkPlanner = new WeightedUntilLeafTreeWalkPlanner();
-    const collector = new SubtreeRewardCollector();
-    const resolver = new RewardResolver(walkPlanner, collector);
-    const pipeline = new RewardPipeline(treeFactory, resolver);
-    let pityInterceptor = null;
-    let stdPityInterceptor = null;
-    const featuredPityInterceptors = [];
-    if (featuredPityEnabled) {
-        for (const cfg of featuredConfigs) {
-            featuredPityInterceptors.push(new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured));
+class PipelineFactory {
+    create(params) {
+        const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
+        const treeFactory = new RewardTreeFactory(nodes);
+        const walkPlanner = new WeightedUntilLeafTreeWalkPlanner();
+        const collector = new SubtreeRewardCollector();
+        const resolver = new RewardResolver(walkPlanner, collector);
+        const pipeline = new RewardPipeline(treeFactory, resolver);
+        let pityInterceptor = null;
+        let stdPityInterceptor = null;
+        const featuredPityInterceptors = [];
+        if (featuredPityEnabled) {
+            for (const cfg of featuredConfigs) {
+                featuredPityInterceptors.push(new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured));
+            }
         }
-    }
-    if (stdPityEnabled && stdPityNodes.length > 0) {
-        const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
-        if (Math.abs(stdTotal - 100) < 0.001) {
-            stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+        if (stdPityEnabled && stdPityNodes.length > 0) {
+            const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
+            if (Math.abs(stdTotal - 100) < 0.001) {
+                stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+            }
         }
-    }
-    if (pityEnabled) {
-        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
-        if (targetConfig) {
-            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+        if (pityEnabled) {
+            const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+            if (targetConfig) {
+                pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+            }
         }
+        // Featured outermost (outgoing priority — final say over result),
+        // then Standard (may override tree), then Hard (forces specific node).
+        const interceptors = [
+            ...featuredPityInterceptors,
+            ...(stdPityInterceptor ? [stdPityInterceptor] : []),
+            ...(pityInterceptor ? [pityInterceptor] : []),
+        ];
+        pipeline.setInterceptors(interceptors);
+        return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
     }
-    // Featured outermost (outgoing priority — final say over result),
-    // then Standard (may override tree), then Hard (forces specific node).
-    const interceptors = [
-        ...featuredPityInterceptors,
-        ...(stdPityInterceptor ? [stdPityInterceptor] : []),
-        ...(pityInterceptor ? [pityInterceptor] : []),
-    ];
-    pipeline.setInterceptors(interceptors);
-    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
 }
 // ===== Base Pity Interceptor =====
 // Abstract base class that encapsulates the shared pity-trigger logic:
@@ -1267,7 +1273,7 @@ SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10�
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
-    constructor(storage, colorProvider) {
+    constructor(pipelineFactory, storage, colorProvider) {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
@@ -1284,9 +1290,9 @@ class RewarderService {
         this.pityInterceptor = null;
         this.stdPityInterceptor = null;
         this.featuredPityInterceptors = [];
-        this.rng = new MathRandomNumberGenerator();
         this.profiles = [];
         this.activeProfileId = "";
+        this._pipelineFactory = pipelineFactory;
         this._storage = storage;
         this._colorProvider = colorProvider;
     }
@@ -1302,7 +1308,7 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = this._pipelineFactory.create({
             nodes: this.rewardNodes,
             pityEnabled: this.pityEnabled,
             pityThreshold: this.pityThreshold,
@@ -1457,8 +1463,8 @@ class RewarderService {
         }
     }
     // ===== Rolling =====
-    async roll() {
-        const result = await this.pipeline.invoke({ rng: this.rng });
+    async roll(rng) {
+        const result = await this.pipeline.invoke({ rng });
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -1686,11 +1692,12 @@ class RewarderService {
 // ===== App =====
 class RewarderApp {
     constructor() {
-        this.svc = new RewarderService(new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.isRolling = false;
         // ── Composition root ─────────────────────────────────────────────────────
+        this.svc = new RewarderService(new PipelineFactory(), new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.spinModeFactory = new WheelSpinModeFactory();
         this.calculatorFactory = new WeightedRandomCalculatorFactory();
+        this.rng = new MathRandomNumberGenerator();
     }
     init() {
         this.svc.init();
@@ -1899,7 +1906,7 @@ class RewarderApp {
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
         for (let i = 0; i < count; i++) {
-            const { reward, rollNum } = await this.svc.roll();
+            const { reward, rollNum } = await this.svc.roll(this.rng);
             await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
             this.renderLatestResult(reward, rollNum);
             this.renderStats();

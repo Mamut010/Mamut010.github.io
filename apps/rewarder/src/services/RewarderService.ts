@@ -24,14 +24,15 @@ class RewarderService {
     stdPityInterceptor:        StandardPityInterceptor  | null = null;
     featuredPityInterceptors:  FeaturedPityInterceptor[]      = [];
 
-    private rng = new MathRandomNumberGenerator();
+    private readonly _pipelineFactory: IPipelineFactory;
     private readonly _storage: IStorageService;
     private readonly _colorProvider: IRewardColorProvider;
 
     profiles: RewardProfile[] = [];
     activeProfileId = "";
 
-    constructor(storage: IStorageService, colorProvider: IRewardColorProvider) {
+    constructor(pipelineFactory: IPipelineFactory, storage: IStorageService, colorProvider: IRewardColorProvider) {
+        this._pipelineFactory = pipelineFactory;
         this._storage = storage;
         this._colorProvider = colorProvider;
     }
@@ -52,7 +53,7 @@ class RewarderService {
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
 
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = this._pipelineFactory.create({
             nodes:               this.rewardNodes,
             pityEnabled:         this.pityEnabled,
             pityThreshold:       this.pityThreshold,
@@ -218,8 +219,8 @@ class RewarderService {
 
     // ===== Rolling =====
 
-    async roll(): Promise<{ reward: Reward; rollNum: number }> {
-        const result = await this.pipeline.invoke({ rng: this.rng });
+    async roll(rng: IRandomNumberGenerator): Promise<{ reward: Reward; rollNum: number }> {
+        const result = await this.pipeline.invoke({ rng });
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -358,11 +359,11 @@ class RewarderService {
             const stats = this._storage.loadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
-if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
-            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
-            for (const i of this.featuredPityInterceptors) {
-                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
-            }
+                if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
+                if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+                for (const i of this.featuredPityInterceptors) {
+                    i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+                }
             }
             return true;
         }
