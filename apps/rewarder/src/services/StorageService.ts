@@ -15,10 +15,16 @@ interface RewardProfile {
     featuredPityEntries:  FeaturedPityEntry[];
 }
 
+interface RollHistoryEntry {
+    rollNum: number;
+    rewardId: string;
+    rewardName: string;
+}
+
 interface PersistedStats {
     totalRolls: number;
     rewardCounts: Record<string, number>;
-    history: Array<{ rollNum: number; rewardId: string; rewardName: string }>;
+    history: RollHistoryEntry[];
     pityCounter: number;
     stdPityCounter: number;
     featuredPityCounters: Record<string, number>;
