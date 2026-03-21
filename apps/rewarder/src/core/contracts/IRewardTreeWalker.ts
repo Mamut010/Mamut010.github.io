@@ -1,5 +1,5 @@
 interface IRewardTreeWalkPlanner<TReward> {
-    prepare(
+    plan(
         tree: IRewardTree<TReward>,
         executionContext: RewardExecutionContext
     ): Promise<IRewardTreeWalker<TReward> | undefined>;

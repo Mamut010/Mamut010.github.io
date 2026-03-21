@@ -212,7 +212,7 @@ class RewardTrees {
     }
 }
 class WeightedUntilLeafTreeWalkPlanner {
-    async prepare(tree, executionContext) {
+    async plan(tree, executionContext) {
         return new WeightedUntilLeafTreeWalker(tree, executionContext);
     }
 }
@@ -231,11 +231,11 @@ class WeightedUntilLeafTreeWalker {
         return this._tree.root;
     }
     *walk() {
-        let nextEdges = this.startNode.childEdges;
+        let nextEdges = this._tree.root.childEdges;
         while (nextEdges.length > 0) {
-            const nextEdge = this.selectEdge(nextEdges);
-            yield nextEdge;
-            nextEdges = nextEdge.target.childEdges;
+            const selectedEdge = this.selectEdge(nextEdges);
+            yield selectedEdge;
+            nextEdges = selectedEdge.target.childEdges;
         }
     }
     selectEdge(edges) {
@@ -270,7 +270,7 @@ class RewardResolver {
         this.collector = collector;
     }
     async resolve(tree, executionContext) {
-        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        const walker = await this.walkPlanner.plan(tree, executionContext);
         if (!walker) {
             return {
                 rewards: [],
