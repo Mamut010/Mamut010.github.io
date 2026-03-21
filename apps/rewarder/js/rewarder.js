@@ -1003,11 +1003,11 @@ class WheelSpinModeFactory {
 }
 // ===== Spinning Angle Calculator (Strategy Pattern) =====
 // ── Concrete calculators ──────────────────────────────────────────────────────
-/** Lands at a uniformly random position within the inner 80% of the segment — single phase. */
+/** Lands at a uniformly random position within the inner 95% of the segment — single phase. */
 class NaturalAngleCalculator {
     calculate({ targetIndex, segAngles }) {
         const { start, sweep } = segAngles[targetIndex];
-        const margin = sweep * 0.10;
+        const margin = sweep * 0.025; // avoid landing too close to edges where visual glitches are more likely
         const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
         return { landingAngle: ((landingAngle % TAU) + TAU) % TAU };
@@ -1082,13 +1082,13 @@ class WeightedRandomCalculatorFactory {
     }
 }
 WeightedRandomCalculatorFactory.NORMAL_POOL = [
-    [new NaturalAngleCalculator(), 65],
-    [new OvershootAngleCalculator(), 20],
-    [new UndershootAngleCalculator(), 15],
+    [new NaturalAngleCalculator(), 90],
+    [new OvershootAngleCalculator(), 5],
+    [new UndershootAngleCalculator(), 5],
 ];
 WeightedRandomCalculatorFactory.ACCEL_POOL = [
-    [new NaturalAngleCalculator(), 80],
-    [new OvershootAngleCalculator(), 20],
+    [new NaturalAngleCalculator(), 95],
+    [new OvershootAngleCalculator(), 5],
 ];
 WeightedRandomCalculatorFactory.NATURAL_ONLY = new NaturalAngleCalculator();
 // ===== Wheel Spinner =====
