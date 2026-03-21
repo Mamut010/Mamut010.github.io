@@ -1,4 +1,16 @@
 "use strict";
+class RewardExecutionContext {
+    constructor(rng, metadata) {
+        this._rng = rng;
+        this._metadata = metadata ?? {};
+    }
+    get rng() {
+        return this._rng;
+    }
+    metadata() {
+        return this._metadata;
+    }
+}
 // ===== IRewardColorProvider =====
 // Provides colors for newly created reward nodes.
 // ===== CyclingColorProvider =====
@@ -55,6 +67,15 @@ class Collections {
             }
         }
         return undefined;
+    }
+}
+class Randoms {
+    constructor() { }
+    static nextInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+    static nextTimestampedString() {
+        return Date.now() + "-" + Math.floor(Math.random() * 10000);
     }
 }
 class RewardUtils {
@@ -152,10 +173,23 @@ class RewardTreeNode {
     }
 }
 class RewardTreeNodes {
+    /**
+     * Creates a new empty node with the given ID and optional metadata.
+     * @param id The unique ID of the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
     static empty(id, metadata) {
         return new RewardTreeNode(id, undefined, metadata);
     }
-    static create(id, reward, metadata) {
+    /**
+     * Creates a new reward node with the given ID, reward, and optional metadata.
+     * @param id The unique ID of the node
+     * @param reward The reward value to attach to the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
+    static reward(id, reward, metadata) {
         return new RewardTreeNode(id, reward, metadata);
     }
 }
@@ -168,6 +202,11 @@ class RewardTree {
     }
 }
 class RewardTrees {
+    /**
+     * Creates a reward tree with the given root node. The root node should already be fully constructed with its subtree.
+     * @param root The root node of the tree
+     * @returns The created reward tree instance
+     */
     static create(root) {
         return new RewardTree(root);
     }
@@ -356,20 +395,32 @@ class RewardTreeFactory {
         this.nodes = nodes;
     }
     async create(executionContext) {
-        const root = RewardTreeNodes.empty("root");
+        const root = this.createRootNode();
         for (const node of this.nodes) {
-            root.connectChild(this.buildNode(node), node.rate);
+            const childNode = this.buildNode(node);
+            root.connectChild(childNode, node.rate);
         }
         return RewardTrees.create(root);
     }
+    createRootNode() {
+        const rootId = "root-" + Randoms.nextTimestampedString();
+        const root = RewardTreeNodes.empty(rootId);
+        return root;
+    }
     buildNode(config) {
-        if (!config.isGroup) {
-            const reward = new Reward(config.id, config.name);
-            return RewardTreeNodes.create(config.id, reward);
-        }
+        return config.isGroup
+            ? this.buildGroupNode(config)
+            : this.buildLeafNode(config);
+    }
+    buildLeafNode(config) {
+        const reward = new Reward(config.id, config.name);
+        return RewardTreeNodes.reward(config.id, reward);
+    }
+    buildGroupNode(config) {
         const groupNode = RewardTreeNodes.empty(config.id);
         for (const child of config.children) {
-            groupNode.connectChild(this.buildNode(child), child.rate);
+            const childNode = this.buildNode(child);
+            groupNode.connectChild(childNode, child.rate);
         }
         return groupNode;
     }
@@ -431,15 +482,21 @@ class BaseRollCountingPityInterceptor {
     }
     async intercept(ctx, next) {
         this._counter++;
-        if (this._counter >= this._threshold) {
-            this._counter = 0;
+        if (this._isThresholdReached()) {
+            this._resetCounter();
             return await this._forcePity(ctx, next);
         }
         const result = await next(ctx);
-        if (this._counter > 0 && this._isHit(result)) {
-            this._counter = 0;
+        if (this._isHit(result)) {
+            this._resetCounter();
         }
         return result;
+    }
+    _isThresholdReached() {
+        return this._counter >= this._threshold;
+    }
+    _resetCounter() {
+        this._counter = 0;
     }
     async _forcePity(ctx, next) {
         ctx.tree = await this._buildPityTree(ctx);
@@ -462,24 +519,11 @@ class HardPityInterceptor extends BaseRollCountingPityInterceptor {
     }
 }
 // ===== Standard Pity Interceptor =====
-/**
- * Tree-overriding pity interceptor.
- *
- * Guarantees a roll from a configurable "pity pool" on every N-th pull,
- * regardless of what was drawn.  Unlike HardPityInterceptor, this interceptor
- * does not target a specific node — instead it replaces the reward tree in the
- * pipeline context with a secondary pool on every N-th roll.
- *
- * Ordering note: place BEFORE HardPityInterceptor in the pipeline so that the
- * tree override is visible to downstream interceptors (HardPityInterceptor will
- * then evaluate its hit-check against the pity-pool result).
- */
 class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
     constructor(threshold, _pityNodes) {
         super(threshold);
         this._pityNodes = _pityNodes;
     }
-    // If a reward from the pity pool was obtained naturally, reset the counter.
     _isHit(result) {
         return RewardUtils.containsResultRecursive(this._pityNodes, result);
     }
@@ -499,18 +543,11 @@ class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
  *                             with the featured one and reset.
  *  - No group hit           → counter unchanged (guarantee carries over).
  *
- * Because the interception happens on the outgoing path and the tree is never
- * modified, this interceptor must be placed OUTERMOST in the pipeline (first
- * in the interceptors array).  It executes after Standard/Hard pity have had
- * their chance and its result replacement takes final precedence.
- *
  * Counter semantics:
  *   threshold = 1  →  every non-featured group entry is immediately replaced.
  *   threshold = N  →  the N-th consecutive non-featured group entry is replaced.
  *
  * Multiple instances coexist independently — one per (group, featured) pairing.
- * Group leaf discovery uses node metadata written by RewardTreeFactory, so no
- * structural pre-knowledge of the tree is required.
  */
 class FeaturedPityInterceptor {
     get entryId() { return this._entryId; }
@@ -534,28 +571,40 @@ class FeaturedPityInterceptor {
         const result = await next(ctx);
         if (groupLeafIds.size === 0)
             return result;
-        // Find the first reward in the result that belongs to this group.
-        const hitIndex = result.rewards.findIndex(r => groupLeafIds.has(r.id));
+        const hitIndex = this._findFirstGroupHitIndex(result, groupLeafIds);
         if (hitIndex === -1) {
             // No group entry this roll — carry over guarantee, counter unchanged.
             return result;
         }
-        if (result.rewards[hitIndex].id === this._featured.id) {
-            // Natural featured hit — reset.
-            this._counter = 0;
+        if (this._isNaturalFeaturedHit(result, hitIndex)) {
+            this._resetCounter();
             return result;
         }
         // Non-featured group entry.
         this._counter++;
-        if (this._counter >= this._threshold) {
-            // Threshold reached — replace result, reset.
-            this._counter = 0;
-            result.rewards[hitIndex] = new Reward(this._featured.id, this._featured.name);
+        if (this._isThresholdReached()) {
+            this._resetCounter();
+            this._replaceReward(result, hitIndex);
         }
         return result;
     }
+    _findFirstGroupHitIndex(result, groupLeafIds) {
+        return result.rewards.findIndex(r => groupLeafIds.has(r.id));
+    }
+    _isNaturalFeaturedHit(result, hitIndex) {
+        return result.rewards[hitIndex].id === this._featured.id;
+    }
+    _isThresholdReached() {
+        return this._counter >= this._threshold;
+    }
+    _resetCounter() {
+        this._counter = 0;
+    }
+    _replaceReward(result, index) {
+        result.rewards[index] = new Reward(this._featured.id, this._featured.name);
+    }
     /**
-     * Finds the group node in the live tree by metadata id, then collects all
+     * Finds the group node in the live tree by id, then collects all
      * leaf reward IDs beneath it.
      */
     _collectGroupLeafIds(root) {
@@ -1464,7 +1513,8 @@ class RewarderService {
     }
     // ===== Rolling =====
     async roll(rng) {
-        const result = await this.pipeline.invoke({ rng });
+        const executionContext = new RewardExecutionContext(rng);
+        const result = await this.pipeline.invoke(executionContext);
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -1683,10 +1733,10 @@ class RewarderService {
         }));
     }
     generateProfileId() {
-        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "profile-" + Randoms.nextTimestampedString();
     }
     generateFeaturedPityEntryId() {
-        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "fp-" + Randoms.nextTimestampedString();
     }
 }
 // ===== App =====

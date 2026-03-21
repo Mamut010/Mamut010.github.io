@@ -22,18 +22,26 @@ abstract class BaseRollCountingPityInterceptor implements IRewardInterceptor<Rew
     ): Promise<RewardResult<Reward>> {
         this._counter++;
 
-        if (this._counter >= this._threshold) {
-            this._counter = 0;
+        if (this._isThresholdReached()) {
+            this._resetCounter();
             return await this._forcePity(ctx, next);
         }
 
         const result = await next(ctx);
 
-        if (this._counter > 0 && this._isHit(result)) {
-            this._counter = 0;
+        if (this._isHit(result)) {
+            this._resetCounter();
         }
 
         return result;
+    }
+
+    protected _isThresholdReached(): boolean {
+        return this._counter >= this._threshold;
+    }
+
+    protected _resetCounter(): void {
+        this._counter = 0;
     }
 
     protected abstract _isHit(result: RewardResult<Reward>): boolean;

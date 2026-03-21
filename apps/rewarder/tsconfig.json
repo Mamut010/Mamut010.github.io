@@ -25,6 +25,7 @@
         "src/ui/coloring/IRewardColorProvider.ts",
         "src/ui/coloring/CyclingColorProvider.ts",
         "src/utils/Collections.ts",
+        "src/utils/Randoms.ts",
         "src/utils/RewardUtils.ts",
         "src/core/impl/MathRandomNumberGenerator.ts",
         "src/core/impl/RewardTreeEdge.ts",
