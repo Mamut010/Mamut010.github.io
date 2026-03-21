@@ -1,4 +1,16 @@
 "use strict";
+class RewardExecutionContext {
+    constructor(rng, metadata) {
+        this._rng = rng;
+        this._metadata = metadata ?? {};
+    }
+    get rng() {
+        return this._rng;
+    }
+    metadata() {
+        return this._metadata;
+    }
+}
 // ===== IRewardColorProvider =====
 // Provides colors for newly created reward nodes.
 // ===== CyclingColorProvider =====
@@ -28,18 +40,235 @@ CyclingColorProvider.PALETTE = [
     "#2dd4bf", // teal
     "#e879f9", // fuchsia
 ];
-class Collections {
+/**
+ * Utility class providing mathematical constants and functions.
+ */
+class Maths {
     constructor() { }
+    /**
+     * Clamp a number between a minimum and maximum value (inclusive)
+     * @param value The number to clamp
+     * @param min The minimum allowed value
+     * @param max The maximum allowed value
+     * @returns The clamped value, guaranteed to be between min and max (inclusive)
+     */
+    static clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+    /**
+     * Normalize an angle to the range [0, 2π)
+     * @param angle The angle in radians to normalize
+     * @returns The normalized angle, guaranteed to be in the range [0, 2π)
+     */
+    static normalizeAngle(angle) {
+        return ((angle % Maths.TAU) + Maths.TAU) % Maths.TAU;
+    }
+    /**
+     * Compare two floating-point numbers for equality within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the numbers are equal within the specified tolerance, false otherwise
+     */
+    static eq(a, b, epsilon = Maths.EPSILON) {
+        return Math.abs(a - b) < epsilon;
+    }
+    /**
+     * Compare two floating-point numbers for inequality within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the numbers are not equal within the specified tolerance, false otherwise
+     */
+    static neq(a, b, epsilon = Maths.EPSILON) {
+        return !Maths.eq(a, b, epsilon);
+    }
+    /**
+     * Compare two floating-point numbers to determine if the first is greater than the second within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the first number is greater than the second within the specified tolerance, false otherwise
+     */
+    static gt(a, b, epsilon = Maths.EPSILON) {
+        return a > b && !Maths.eq(a, b, epsilon);
+    }
+    /**
+     * Compare two floating-point numbers to determine if the first is greater than or equal to the second within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the first number is greater than or equal to the second within the specified tolerance, false otherwise
+     */
+    static gte(a, b, epsilon = Maths.EPSILON) {
+        return a > b || Maths.eq(a, b, epsilon);
+    }
+    /**
+     * Compare two floating-point numbers to determine if the first is less than the second within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the first number is less than the second within the specified tolerance, false otherwise
+     */
+    static lt(a, b, epsilon = Maths.EPSILON) {
+        return a < b && !Maths.eq(a, b, epsilon);
+    }
+    /**
+     * Compare two floating-point numbers to determine if the first is less than or equal to the second within a specified tolerance.
+     * @param a The first number to compare
+     * @param b The second number to compare
+     * @param epsilon The tolerance for comparison, defaults to Maths.EPSILON
+     * @returns True if the first number is less than or equal to the second within the specified tolerance, false otherwise
+     */
+    static lte(a, b, epsilon = Maths.EPSILON) {
+        return a < b || Maths.eq(a, b, epsilon);
+    }
+    /**
+     * Linearly interpolate between two numbers based on a parameter t in the range [0, 1]
+     * @param start The starting value (corresponding to t=0)
+     * @param end The ending value (corresponding to t=1)
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 returns start and 1 returns end
+     * @returns The interpolated value, calculated as start + t * (end - start)
+     */
+    static lerp(start, end, t) {
+        return start + t * (end - start);
+    }
+    /**
+     * Sigmoid-like interpolation function that smoothly transitions from 0 to 1 as x moves from edge0 to edge1,
+     * with zero first derivatives at both edges.
+     * The function returns 0 when x <= edge0, 1 when x >= edge1, and a smooth S-shaped curve in between.
+     * @param edge0 The lower edge of the transition range, where the output starts to increase from 0
+     * @param edge1 The upper edge of the transition range, where the output reaches 1
+     * @param x The input value to be interpolated, typically in the range [edge0, edge1]
+     * @returns The interpolated value, calculated using the smoothstep formula, which ensures a smooth transition between 0 and 1 as x moves from edge0 to edge1
+     */
+    static smoothstep(edge0, edge1, x) {
+        const t = Maths.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+        return t * t * (3 - 2 * t);
+    }
+    /**
+     * Smoother interpolation function that provides an even smoother transition than smoothstep, with zero first and second derivatives at the edges.
+     * The function returns 0 when x <= edge0, 1 when x >= edge1, and a smooth S-shaped curve in between.
+     * @param edge0 The lower edge of the transition range, where the output starts to increase from 0
+     * @param edge1 The upper edge of the transition range, where the output reaches 1
+     * @param x The input value to be interpolated, typically in the range [edge0, edge1]
+     * @returns The interpolated value, calculated using the smootherstep formula, which ensures an even smoother transition between 0 and 1 as x moves from edge0 to edge1
+     */
+    static smootherstep(edge0, edge1, x) {
+        const t = Maths.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+    /**
+     * Ease-in quart function that provides a smooth acceleration curve, starting slow and speeding up towards the end, creating a natural motion effect in animations.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the quart ease-in formula
+     */
+    static easeInQuart(t) {
+        return Math.pow(Math.min(t, 1), 4);
+    }
+    /**
+     * Ease-out quart function that provides a smooth deceleration curve, starting fast and slowing down towards the end, creating a natural motion effect in animations.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the quart ease-out formula
+     */
+    static easeOutQuart(t) {
+        return 1 - Math.pow(1 - Math.min(t, 1), 4);
+    }
+    /**
+     * Ease-in-out cubic function that provides a smooth acceleration and deceleration curve, commonly used in animations to create natural motion.
+     * The function starts with a slow acceleration, speeds up in the middle, and then slows down again towards the end.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the cubic ease-in-out formula
+     */
+    static easeInOutCubic(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+    /**
+     * Ease-in-out back function that provides a smooth acceleration and deceleration curve with an overshooting effect, creating a dynamic and playful motion in animations.
+     * The function starts with a slow acceleration, speeds up in the middle while briefly overshooting the target value, and then slows down again towards the end, creating a unique motion effect.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the quart ease-in-out formula
+     */
+    static easeInOutQuart(t) {
+        return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(1 - 2 * t, 4) / 2;
+    }
+    /**
+     * Ease-in-out sine function that provides a smooth sinusoidal acceleration and deceleration curve, creating a natural and smooth motion effect in animations.
+     * The function starts with a slow acceleration, speeds up in the middle, and then slows down again towards the end, following a sine wave pattern.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the sine ease-in-out formula
+     */
+    static easeInOutSine(t) {
+        return -(Math.cos(Math.PI * t) - 1) / 2;
+    }
+    /**
+     * Ease-in-out quint function that provides a smooth acceleration and deceleration curve, similar to cubic but with a steeper curve.
+     * The function starts with a slow acceleration, speeds up in the middle, and then slows down again towards the end.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the quint ease-in-out formula
+     */
+    static easeInOutQuint(t) {
+        return t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2;
+    }
+    /**
+     * Ease-in-out circular function that provides a smooth acceleration and deceleration curve, following a circular pattern.
+     * The function starts with a slow acceleration, speeds up in the middle, and then slows down again towards the end, creating a natural motion effect in animations.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the circular ease-in-out formula
+     */
+    static easeInOutCirc(t) {
+        return t < 0.5
+            ? (1 - Math.sqrt(1 - Math.pow(2 * t, 2))) / 2
+            : (Math.sqrt(1 - Math.pow(-2 * t + 2, 2)) + 1) / 2;
+    }
+    /**
+     * Ease-in-out back function that provides a smooth acceleration and deceleration curve with an overshooting effect, creating a dynamic and playful motion in animations.
+     * The function starts with a slow acceleration, speeds up in the middle while briefly overshooting the target value, and then slows down again towards the end, creating a unique motion effect.
+     * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
+     * @returns The eased value, calculated using the back ease-in-out formula
+     */
+    static easeInOutBack(t) {
+        const c1 = 1.70158;
+        const c2 = c1 * 1.525;
+        return t < 0.5
+            ? (Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2
+            : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+    }
+}
+/**
+ * The mathematical constant τ (tau), equal to 2π, representing a full circle in radians.
+ */
+Maths.TAU = 2 * Math.PI;
+/**
+ * The golden ratio φ (phi), approximately 1.61803398875.
+ */
+Maths.PHI = (1 + Math.sqrt(5)) / 2;
+/**
+ * The smallest positive number such that 1 + EPSILON !== 1, used to determine the precision of floating-point calculations and to avoid issues with rounding errors in comparisons.
+ */
+Maths.EPSILON = Number.EPSILON;
+/**
+ * A right angle, equal to τ/4 (π/2) radians or 90 degrees, representing a quarter of a full circle.
+ */
+Maths.RIGHT_ANGLE = Math.PI / 2;
+class Randoms {
+    constructor() { }
+    static nextInt(min, max, rng = Math.random) {
+        return Math.floor(rng() * (max - min + 1)) + min;
+    }
+    static nextTimestampedString(rng = Math.random) {
+        return Date.now() + "-" + Math.floor(rng() * 10000);
+    }
     /**
      * Randomly select an item from the given list based on the given weights
      * @template T
      * @param {T[]} items The list of items
      * @param {number[]} weights The corresponding weights for every item
-     * @param {() => number} [rng=Math.random] Optional random number generator function that returns a value in the range [0, 1)
+     * @param {RngFunc} [rng=Math.random] Optional random number generator function that returns a value in the range [0, 1)
      * @returns {T|undefined} The randomly selected item or 'undefined' if the list is empty
      * @throws {Error} If the list's length and number of weights do not match
      */
-    static randomItemWeighted(items, weights, rng = Math.random) {
+    static nextItemWeighted(items, weights, rng = Math.random) {
         if (items.length !== weights.length) {
             throw new Error(`Invalid argument: the number of items and number of weights must match`);
         }
@@ -152,10 +381,23 @@ class RewardTreeNode {
     }
 }
 class RewardTreeNodes {
+    /**
+     * Creates a new empty node with the given ID and optional metadata.
+     * @param id The unique ID of the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
     static empty(id, metadata) {
         return new RewardTreeNode(id, undefined, metadata);
     }
-    static create(id, reward, metadata) {
+    /**
+     * Creates a new reward node with the given ID, reward, and optional metadata.
+     * @param id The unique ID of the node
+     * @param reward The reward value to attach to the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
+    static reward(id, reward, metadata) {
         return new RewardTreeNode(id, reward, metadata);
     }
 }
@@ -168,12 +410,17 @@ class RewardTree {
     }
 }
 class RewardTrees {
+    /**
+     * Creates a reward tree with the given root node. The root node should already be fully constructed with its subtree.
+     * @param root The root node of the tree
+     * @returns The created reward tree instance
+     */
     static create(root) {
         return new RewardTree(root);
     }
 }
 class WeightedUntilLeafTreeWalkPlanner {
-    async prepare(tree, executionContext) {
+    async plan(tree, executionContext) {
         return new WeightedUntilLeafTreeWalker(tree, executionContext);
     }
 }
@@ -192,16 +439,16 @@ class WeightedUntilLeafTreeWalker {
         return this._tree.root;
     }
     *walk() {
-        let nextEdges = this.startNode.childEdges;
+        let nextEdges = this._tree.root.childEdges;
         while (nextEdges.length > 0) {
-            const nextEdge = this.selectEdge(nextEdges);
-            yield nextEdge;
-            nextEdges = nextEdge.target.childEdges;
+            const selectedEdge = this.selectEdge(nextEdges);
+            yield selectedEdge;
+            nextEdges = selectedEdge.target.childEdges;
         }
     }
     selectEdge(edges) {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
+        const selectedEdge = Randoms.nextItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }
@@ -231,7 +478,7 @@ class RewardResolver {
         this.collector = collector;
     }
     async resolve(tree, executionContext) {
-        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        const walker = await this.walkPlanner.plan(tree, executionContext);
         if (!walker) {
             return {
                 rewards: [],
@@ -351,25 +598,98 @@ class Reward {
         return this.id === other.id;
     }
 }
+class Point2 {
+    constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+    }
+    distanceTo(other) {
+        const dx = this.x - other.x;
+        const dy = this.y - other.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    setX(x) {
+        if (x === this.x)
+            return this;
+        return new Point2(x, this.y);
+    }
+    setY(y) {
+        if (y === this.y)
+            return this;
+        return new Point2(this.x, y);
+    }
+    setCoords(x, y) {
+        if (x === this.x && y === this.y)
+            return this;
+        return new Point2(x, y);
+    }
+}
+class CircleGeometry {
+    constructor(radius) {
+        this.radius = radius;
+    }
+    setRadius(radius) {
+        if (radius === this.radius)
+            return this;
+        return new CircleGeometry(radius);
+    }
+}
+class Circle {
+    constructor(center, geometry) {
+        this.center = center;
+        this.geometry = geometry;
+    }
+    static fromRadius(center, radius) {
+        return new Circle(center, new CircleGeometry(radius));
+    }
+    static of(x, y, radius) {
+        return Circle.fromRadius(new Point2(x, y), radius);
+    }
+    get x() { return this.center.x; }
+    get y() { return this.center.y; }
+    get r() { return this.geometry.radius; }
+    setCenter(center) {
+        if (center === this.center)
+            return this;
+        return new Circle(center, this.geometry);
+    }
+    setGeometry(geometry) {
+        if (geometry === this.geometry)
+            return this;
+        return new Circle(this.center, geometry);
+    }
+}
 class RewardTreeFactory {
     constructor(nodes) {
         this.nodes = nodes;
     }
     async create(executionContext) {
-        const root = RewardTreeNodes.empty("root");
+        const root = this.createRootNode();
         for (const node of this.nodes) {
-            root.connectChild(this.buildNode(node), node.rate);
+            const childNode = this.buildNode(node);
+            root.connectChild(childNode, node.rate);
         }
         return RewardTrees.create(root);
     }
+    createRootNode() {
+        const rootId = "root-" + Randoms.nextTimestampedString();
+        const root = RewardTreeNodes.empty(rootId);
+        return root;
+    }
     buildNode(config) {
-        if (!config.isGroup) {
-            const reward = new Reward(config.id, config.name);
-            return RewardTreeNodes.create(config.id, reward);
-        }
+        return config.isGroup
+            ? this.buildGroupNode(config)
+            : this.buildLeafNode(config);
+    }
+    buildLeafNode(config) {
+        const reward = new Reward(config.id, config.name);
+        return RewardTreeNodes.reward(config.id, reward);
+    }
+    buildGroupNode(config) {
         const groupNode = RewardTreeNodes.empty(config.id);
         for (const child of config.children) {
-            groupNode.connectChild(this.buildNode(child), child.rate);
+            const childNode = this.buildNode(child);
+            groupNode.connectChild(childNode, child.rate);
         }
         return groupNode;
     }
@@ -431,15 +751,21 @@ class BaseRollCountingPityInterceptor {
     }
     async intercept(ctx, next) {
         this._counter++;
-        if (this._counter >= this._threshold) {
-            this._counter = 0;
+        if (this._isThresholdReached()) {
+            this._resetCounter();
             return await this._forcePity(ctx, next);
         }
         const result = await next(ctx);
-        if (this._counter > 0 && this._isHit(result)) {
-            this._counter = 0;
+        if (this._isHit(result)) {
+            this._resetCounter();
         }
         return result;
+    }
+    _isThresholdReached() {
+        return this._counter >= this._threshold;
+    }
+    _resetCounter() {
+        this._counter = 0;
     }
     async _forcePity(ctx, next) {
         ctx.tree = await this._buildPityTree(ctx);
@@ -462,24 +788,11 @@ class HardPityInterceptor extends BaseRollCountingPityInterceptor {
     }
 }
 // ===== Standard Pity Interceptor =====
-/**
- * Tree-overriding pity interceptor.
- *
- * Guarantees a roll from a configurable "pity pool" on every N-th pull,
- * regardless of what was drawn.  Unlike HardPityInterceptor, this interceptor
- * does not target a specific node — instead it replaces the reward tree in the
- * pipeline context with a secondary pool on every N-th roll.
- *
- * Ordering note: place BEFORE HardPityInterceptor in the pipeline so that the
- * tree override is visible to downstream interceptors (HardPityInterceptor will
- * then evaluate its hit-check against the pity-pool result).
- */
 class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
     constructor(threshold, _pityNodes) {
         super(threshold);
         this._pityNodes = _pityNodes;
     }
-    // If a reward from the pity pool was obtained naturally, reset the counter.
     _isHit(result) {
         return RewardUtils.containsResultRecursive(this._pityNodes, result);
     }
@@ -499,18 +812,11 @@ class StandardPityInterceptor extends BaseRollCountingPityInterceptor {
  *                             with the featured one and reset.
  *  - No group hit           → counter unchanged (guarantee carries over).
  *
- * Because the interception happens on the outgoing path and the tree is never
- * modified, this interceptor must be placed OUTERMOST in the pipeline (first
- * in the interceptors array).  It executes after Standard/Hard pity have had
- * their chance and its result replacement takes final precedence.
- *
  * Counter semantics:
  *   threshold = 1  →  every non-featured group entry is immediately replaced.
  *   threshold = N  →  the N-th consecutive non-featured group entry is replaced.
  *
  * Multiple instances coexist independently — one per (group, featured) pairing.
- * Group leaf discovery uses node metadata written by RewardTreeFactory, so no
- * structural pre-knowledge of the tree is required.
  */
 class FeaturedPityInterceptor {
     get entryId() { return this._entryId; }
@@ -534,28 +840,40 @@ class FeaturedPityInterceptor {
         const result = await next(ctx);
         if (groupLeafIds.size === 0)
             return result;
-        // Find the first reward in the result that belongs to this group.
-        const hitIndex = result.rewards.findIndex(r => groupLeafIds.has(r.id));
+        const hitIndex = this._findFirstGroupHitIndex(result, groupLeafIds);
         if (hitIndex === -1) {
             // No group entry this roll — carry over guarantee, counter unchanged.
             return result;
         }
-        if (result.rewards[hitIndex].id === this._featured.id) {
-            // Natural featured hit — reset.
-            this._counter = 0;
+        if (this._isNaturalFeaturedHit(result, hitIndex)) {
+            this._resetCounter();
             return result;
         }
         // Non-featured group entry.
         this._counter++;
-        if (this._counter >= this._threshold) {
-            // Threshold reached — replace result, reset.
-            this._counter = 0;
-            result.rewards[hitIndex] = new Reward(this._featured.id, this._featured.name);
+        if (this._isThresholdReached()) {
+            this._resetCounter();
+            this._replaceReward(result, hitIndex);
         }
         return result;
     }
+    _findFirstGroupHitIndex(result, groupLeafIds) {
+        return result.rewards.findIndex(r => groupLeafIds.has(r.id));
+    }
+    _isNaturalFeaturedHit(result, hitIndex) {
+        return result.rewards[hitIndex].id === this._featured.id;
+    }
+    _isThresholdReached() {
+        return this._counter >= this._threshold;
+    }
+    _resetCounter() {
+        this._counter = 0;
+    }
+    _replaceReward(result, index) {
+        result.rewards[index] = new Reward(this._featured.id, this._featured.name);
+    }
     /**
-     * Finds the group node in the live tree by metadata id, then collects all
+     * Finds the group node in the live tree by id, then collects all
      * leaf reward IDs beneath it.
      */
     _collectGroupLeafIds(root) {
@@ -654,67 +972,6 @@ class LocalStorageService {
         return this.prefix ? `${this.prefix}${suffix}` : suffix;
     }
 }
-class Point2 {
-    constructor(x = 0, y = 0) {
-        this.x = x;
-        this.y = y;
-    }
-    distanceTo(other) {
-        const dx = this.x - other.x;
-        const dy = this.y - other.y;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-    setX(x) {
-        if (x === this.x)
-            return this;
-        return new Point2(x, this.y);
-    }
-    setY(y) {
-        if (y === this.y)
-            return this;
-        return new Point2(this.x, y);
-    }
-    setCoords(x, y) {
-        if (x === this.x && y === this.y)
-            return this;
-        return new Point2(x, y);
-    }
-}
-class CircleGeometry {
-    constructor(radius) {
-        this.radius = radius;
-    }
-    setRadius(radius) {
-        if (radius === this.radius)
-            return this;
-        return new CircleGeometry(radius);
-    }
-}
-class Circle {
-    constructor(center, geometry) {
-        this.center = center;
-        this.geometry = geometry;
-    }
-    static fromRadius(center, radius) {
-        return new Circle(center, new CircleGeometry(radius));
-    }
-    static of(x, y, radius) {
-        return Circle.fromRadius(new Point2(x, y), radius);
-    }
-    get x() { return this.center.x; }
-    get y() { return this.center.y; }
-    get r() { return this.geometry.radius; }
-    setCenter(center) {
-        if (center === this.center)
-            return this;
-        return new Circle(center, this.geometry);
-    }
-    setGeometry(geometry) {
-        if (geometry === this.geometry)
-            return this;
-        return new Circle(this.center, geometry);
-    }
-}
 // ===== Wheel Drawer =====
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
 class CanvasWheelDrawer {
@@ -752,7 +1009,7 @@ class CanvasWheelDrawer {
         const cy = wheelShape.y;
         const r = wheelShape.r;
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, r, 0, Maths.TAU);
         ctx.strokeStyle = "#2a2a5a";
         ctx.lineWidth = Math.max(1, r * 0.015);
         ctx.stroke();
@@ -779,7 +1036,7 @@ class CanvasWheelDrawer {
         // Subtle sheen so dark colours remain distinguishable
         ctx.fillStyle = "rgba(255,255,255,0.06)";
         ctx.fill();
-        // const isFullArc = Math.abs(angles.sweep - 2 * Math.PI) < 0.001;
+        // const isFullArc = Math.abs(angles.sweep - Maths.TAU) < 0.001;
         // // Stroke segment borders except for full circles (to avoid a thin gap in that case)
         // if (!isFullArc) {
         //     this.strokeSegmentBorder(r);
@@ -805,7 +1062,7 @@ class CanvasWheelDrawer {
         const txtR = r * 0.62;
         const arcLen = angles.sweep * txtR; // arc length at label radius
         // Font size adapts to canvas size and available arc length
-        const fontSize = Math.max(r * 0.05, Math.min(r * 0.098, arcLen * 0.45));
+        const fontSize = Maths.clamp(arcLen * 0.45, r * 0.05, r * 0.098);
         const maxChars = Math.floor(arcLen / (fontSize * 0.62));
         if (maxChars < 1)
             return;
@@ -833,7 +1090,7 @@ class CanvasWheelDrawer {
         const cy = wheelShape.y;
         const r = wheelShape.r;
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, r, 0, Maths.TAU);
         ctx.strokeStyle = "#4a4a8a";
         ctx.lineWidth = Math.max(1, r * 0.023);
         ctx.stroke();
@@ -845,7 +1102,7 @@ class CanvasWheelDrawer {
         const r = wheelShape.r;
         const capR = r * 0.10;
         ctx.beginPath();
-        ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, capR, 0, Maths.TAU);
         ctx.fillStyle = "#0f172a";
         ctx.fill();
         ctx.strokeStyle = "#c084fc";
@@ -873,7 +1130,7 @@ class CanvasWheelDrawer {
         ctx.shadowBlur = 0;
     }
 }
-CanvasWheelDrawer.BASE_OFFSET = -Math.PI / 2; // rotate so angle 0 points to the top
+CanvasWheelDrawer.BASE_OFFSET = -Maths.RIGHT_ANGLE; // rotate so angle 0 points to the top
 // ===== Wheel Spin Animator =====
 /**
  * Unified single-pass animator.
@@ -982,11 +1239,11 @@ class TwoPhaseWheelAnimator {
      */
     computePosition(t) {
         const baseTarget = this.overshootTarget ?? this.finalRotation;
-        const basePos = this.spinFromRotation + this.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        const basePos = this.spinFromRotation + Maths.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
         if (this.overshootTarget == null)
             return basePos;
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = this.smoothstepTail(t, this.blendStart);
+        const blend = Maths.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
         return basePos + blend * (this.finalRotation - basePos);
     }
@@ -999,20 +1256,6 @@ class TwoPhaseWheelAnimator {
         const resolve = this.resolveSpinPromise;
         this.resolveSpinPromise = null;
         resolve?.();
-    }
-    // ── Easing / math helpers ─────────────────────────────────────────────────
-    easeOutQuart(t) {
-        return 1 - Math.pow(1 - Math.min(t, 1), 4);
-    }
-    /**
-     * Smoothstep that maps [start, 1] → [0, 1] and is 0 for t ≤ start.
-     * Used to define the correction blend window.
-     */
-    smoothstepTail(t, start) {
-        if (t <= start)
-            return 0;
-        const u = (t - start) / (1 - start); // remap to [0, 1]
-        return u * u * (3 - 2 * u); // classic smoothstep
     }
 }
 // ===== Wheel Spin Mode (Strategy Pattern) =====
@@ -1077,9 +1320,8 @@ class NaturalAngleCalculator {
     calculate({ targetIndex, segAngles }) {
         const { start, sweep } = segAngles[targetIndex];
         const margin = sweep * 0.025; // avoid landing too close to edges where visual glitches are more likely
-        const TAU = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        return { landingAngle: ((landingAngle % TAU) + TAU) % TAU };
+        return { landingAngle };
     }
 }
 /**
@@ -1093,17 +1335,16 @@ class NaturalAngleCalculator {
 class OvershootAngleCalculator {
     calculate({ targetIndex, segAngles }) {
         const { start, sweep } = segAngles[targetIndex];
-        const TAU = 2 * Math.PI;
         // Landing sits close to the trailing edge (start) so the correction
         // needed to cross it is as small as possible.
         // Cap distInside so large segments don't push correctionDelta too high.
         const distInside = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
         const landingAngle = start + distInside;
         // How far past the trailing edge the pointer should briefly appear.
-        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const extraGap = Maths.clamp(sweep * 0.04, 0.025, 0.06);
         const correctionDelta = distInside + extraGap; // always crosses start
         return {
-            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            landingAngle,
             correctionDelta,
         };
     }
@@ -1118,15 +1359,14 @@ class OvershootAngleCalculator {
 class UndershootAngleCalculator {
     calculate({ targetIndex, segAngles }) {
         const { start, sweep } = segAngles[targetIndex];
-        const TAU = 2 * Math.PI;
         // Landing sits close to the leading edge (start + sweep).
         const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
         const landingAngle = start + sweep - distFromLeading;
         // How far past the leading edge the pointer should briefly appear.
-        const extraGap = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const extraGap = Maths.clamp(sweep * 0.04, 0.025, 0.06);
         const correctionDelta = -(distFromLeading + extraGap); // always crosses start+sweep
         return {
-            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            landingAngle,
             correctionDelta,
         };
     }
@@ -1147,11 +1387,11 @@ class WeightedRandomCalculatorFactory {
             : WeightedRandomCalculatorFactory.NORMAL_POOL;
         const items = pool.map(([calc]) => calc);
         const weights = pool.map(([, w]) => w);
-        return Collections.randomItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
     }
 }
 WeightedRandomCalculatorFactory.NORMAL_POOL = [
-    [new NaturalAngleCalculator(), 90],
+    [new NaturalAngleCalculator(), 0],
     [new OvershootAngleCalculator(), 5],
     [new UndershootAngleCalculator(), 5],
 ];
@@ -1167,13 +1407,13 @@ class DefaultWheelSpinner {
         this.calculatorFactory = calculatorFactory;
     }
     spin(targetIndex, context, segments, segAngles, onFrame) {
-        const TAU = 2 * Math.PI;
+        const TAU = Maths.TAU;
         const calculator = this.calculatorFactory.create(context);
         const landing = calculator.calculate({ targetIndex, segments, segAngles });
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
-        const targetRot = ((-landing.landingAngle % TAU) + TAU) % TAU;
-        const currentNorm = ((this.animator.currentRotation % TAU) + TAU) % TAU;
+        const targetRot = Maths.normalizeAngle(-landing.landingAngle);
+        const currentNorm = Maths.normalizeAngle(this.animator.currentRotation);
         let delta = targetRot - currentNorm;
         if (delta <= 0)
             delta += TAU;
@@ -1235,7 +1475,6 @@ class SpinningWheel {
     computeAngles(segs) {
         if (segs.length === 0)
             return [];
-        const TAU = 2 * Math.PI;
         const total = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
         // Compute visual fractions with a minimum floor so tiny segments stay visible.
         // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
@@ -1261,8 +1500,8 @@ class SpinningWheel {
         const result = [];
         let cum = 0;
         for (let i = 0; i < segs.length; i++) {
-            const start = cum * TAU;
-            const sweep = frac[i] * TAU;
+            const start = cum * Maths.TAU;
+            const sweep = frac[i] * Maths.TAU;
             result.push({ start, mid: start + sweep / 2, sweep });
             cum += frac[i];
         }
@@ -1464,7 +1703,8 @@ class RewarderService {
     }
     // ===== Rolling =====
     async roll(rng) {
-        const result = await this.pipeline.invoke({ rng });
+        const executionContext = new RewardExecutionContext(rng);
+        const result = await this.pipeline.invoke(executionContext);
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -1683,10 +1923,10 @@ class RewarderService {
         }));
     }
     generateProfileId() {
-        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "profile-" + Randoms.nextTimestampedString();
     }
     generateFeaturedPityEntryId() {
-        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "fp-" + Randoms.nextTimestampedString();
     }
 }
 // ===== App =====
@@ -2561,7 +2801,7 @@ class RewarderApp {
 }
 const computePercentage = (counter, threshold) => {
     const computingThreshold = Math.max(1, threshold - 1);
-    return Math.max(0, Math.min(100, (counter / computingThreshold) * 100));
+    return Maths.clamp((counter / computingThreshold) * 100, 0, 100);
 };
 document.addEventListener("DOMContentLoaded", () => {
     new RewarderApp().init();

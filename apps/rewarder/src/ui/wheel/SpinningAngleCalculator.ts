@@ -49,9 +49,8 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
     calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
         const { start, sweep } = segAngles[targetIndex];
         const margin       = sweep * 0.025;  // avoid landing too close to edges where visual glitches are more likely
-        const TAU          = 2 * Math.PI;
         const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
-        return { landingAngle: ((landingAngle % TAU) + TAU) % TAU };
+        return { landingAngle };
     }
 }
 
@@ -66,17 +65,16 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
 class OvershootAngleCalculator implements ISpinningAngleCalculator {
     calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
         const { start, sweep } = segAngles[targetIndex];
-        const TAU = 2 * Math.PI;
         // Landing sits close to the trailing edge (start) so the correction
         // needed to cross it is as small as possible.
         // Cap distInside so large segments don't push correctionDelta too high.
         const distInside     = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
         const landingAngle   = start + distInside;
         // How far past the trailing edge the pointer should briefly appear.
-        const extraGap       = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const extraGap       = Maths.clamp(sweep * 0.04, 0.025, 0.06);
         const correctionDelta = distInside + extraGap;   // always crosses start
         return {
-            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            landingAngle,
             correctionDelta,
         };
     }
@@ -92,15 +90,14 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
 class UndershootAngleCalculator implements ISpinningAngleCalculator {
     calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
         const { start, sweep } = segAngles[targetIndex];
-        const TAU = 2 * Math.PI;
         // Landing sits close to the leading edge (start + sweep).
         const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
         const landingAngle    = start + sweep - distFromLeading;
         // How far past the leading edge the pointer should briefly appear.
-        const extraGap        = Math.min(0.06, Math.max(0.025, sweep * 0.04));
+        const extraGap        = Maths.clamp(sweep * 0.04, 0.025, 0.06);
         const correctionDelta = -(distFromLeading + extraGap);  // always crosses start+sweep
         return {
-            landingAngle: ((landingAngle % TAU) + TAU) % TAU,
+            landingAngle,
             correctionDelta,
         };
     }
@@ -116,7 +113,7 @@ class UndershootAngleCalculator implements ISpinningAngleCalculator {
  */
 class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory {
     private static readonly NORMAL_POOL: [ISpinningAngleCalculator, number][] = [
-        [new NaturalAngleCalculator(),    90],
+        [new NaturalAngleCalculator(),    0],
         [new OvershootAngleCalculator(),  5],
         [new UndershootAngleCalculator(), 5],
     ];
@@ -135,6 +132,6 @@ class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory
 
         const items   = pool.map(([calc]) => calc);
         const weights = pool.map(([, w])  => w);
-        return Collections.randomItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
     }
 }

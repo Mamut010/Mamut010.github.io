@@ -55,7 +55,6 @@ class SpinningWheel {
     private computeAngles(segs: WheelSegment[]): SegmentAngles[] {
         if (segs.length === 0) return [];
 
-        const TAU   = 2 * Math.PI;
         const total = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
 
         // Compute visual fractions with a minimum floor so tiny segments stay visible.
@@ -80,8 +79,8 @@ class SpinningWheel {
         const result: SegmentAngles[] = [];
         let   cum = 0;
         for (let i = 0; i < segs.length; i++) {
-            const start = cum * TAU;
-            const sweep = frac[i] * TAU;
+            const start = cum * Maths.TAU;
+            const sweep = frac[i] * Maths.TAU;
             result.push({ start, mid: start + sweep / 2, sweep });
             cum += frac[i];
         }

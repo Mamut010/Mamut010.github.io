@@ -5,7 +5,7 @@ class RewardResolver<TReward> implements IRewardResolver<TReward> {
     ) {}
 
     public async resolve(tree: IRewardTree<TReward>, executionContext: RewardExecutionContext): Promise<RewardResult<TReward>> {
-        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        const walker = await this.walkPlanner.plan(tree, executionContext);
         if (!walker) {
             return {
                 rewards: [],

@@ -220,7 +220,8 @@ class RewarderService {
     // ===== Rolling =====
 
     async roll(rng: IRandomNumberGenerator): Promise<{ reward: Reward; rollNum: number }> {
-        const result = await this.pipeline.invoke({ rng });
+        const executionContext = new RewardExecutionContext(rng);
+        const result = await this.pipeline.invoke(executionContext);
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -455,10 +456,10 @@ class RewarderService {
     }
 
     private generateProfileId(): string {
-        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "profile-" + Randoms.nextTimestampedString();
     }
 
     private generateFeaturedPityEntryId(): string {
-        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+        return "fp-" + Randoms.nextTimestampedString();
     }
 }

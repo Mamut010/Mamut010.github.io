@@ -104,6 +104,12 @@ class RewardTreeNode<TReward> implements IRewardTreeNode<TReward> {
 }
 
 class RewardTreeNodes {
+    /**
+     * Creates a new empty node with the given ID and optional metadata.
+     * @param id The unique ID of the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
     public static empty<
         TReward,
         TMeta extends object = Record<string, unknown>
@@ -111,7 +117,14 @@ class RewardTreeNodes {
         return new RewardTreeNode<TReward>(id, undefined, metadata);
     }
 
-    public static create<
+    /**
+     * Creates a new reward node with the given ID, reward, and optional metadata.
+     * @param id The unique ID of the node
+     * @param reward The reward value to attach to the node
+     * @param metadata The metadata object to attach to the node (optional)
+     * @returns The created node instance
+     */
+    public static reward<
         TReward,
         TMeta extends object = Record<string, unknown>
         >(id: string, reward: TReward, metadata?: TMeta): IRewardTreeNode<TReward> {

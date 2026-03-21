@@ -11,18 +11,11 @@
  *                             with the featured one and reset.
  *  - No group hit           → counter unchanged (guarantee carries over).
  *
- * Because the interception happens on the outgoing path and the tree is never
- * modified, this interceptor must be placed OUTERMOST in the pipeline (first
- * in the interceptors array).  It executes after Standard/Hard pity have had
- * their chance and its result replacement takes final precedence.
- *
  * Counter semantics:
  *   threshold = 1  →  every non-featured group entry is immediately replaced.
  *   threshold = N  →  the N-th consecutive non-featured group entry is replaced.
  *
  * Multiple instances coexist independently — one per (group, featured) pairing.
- * Group leaf discovery uses node metadata written by RewardTreeFactory, so no
- * structural pre-knowledge of the tree is required.
  */
 class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
     private _counter = 0;
@@ -55,32 +48,49 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
 
         if (groupLeafIds.size === 0) return result;
 
-        // Find the first reward in the result that belongs to this group.
-        const hitIndex = result.rewards.findIndex(r => groupLeafIds.has(r.id));
+        const hitIndex = this._findFirstGroupHitIndex(result, groupLeafIds);
         if (hitIndex === -1) {
             // No group entry this roll — carry over guarantee, counter unchanged.
             return result;
         }
 
-        if (result.rewards[hitIndex].id === this._featured.id) {
-            // Natural featured hit — reset.
-            this._counter = 0;
+        if (this._isNaturalFeaturedHit(result, hitIndex)) {
+            this._resetCounter();
             return result;
         }
 
         // Non-featured group entry.
         this._counter++;
-        if (this._counter >= this._threshold) {
-            // Threshold reached — replace result, reset.
-            this._counter = 0;
-            result.rewards[hitIndex] = new Reward(this._featured.id, this._featured.name);
+        if (this._isThresholdReached()) {
+            this._resetCounter();
+            this._replaceReward(result, hitIndex);
         }
 
         return result;
     }
 
+    private _findFirstGroupHitIndex(result: RewardResult<Reward>, groupLeafIds: Set<string>): number {
+        return result.rewards.findIndex(r => groupLeafIds.has(r.id));
+    }
+
+    private _isNaturalFeaturedHit(result: RewardResult<Reward>, hitIndex: number): boolean {
+        return result.rewards[hitIndex].id === this._featured.id;
+    }
+
+    private _isThresholdReached(): boolean {
+        return this._counter >= this._threshold;
+    }
+
+    private _resetCounter(): void {
+        this._counter = 0;
+    }
+
+    private _replaceReward(result: RewardResult<Reward>, index: number): void {
+        result.rewards[index] = new Reward(this._featured.id, this._featured.name);
+    }
+
     /**
-     * Finds the group node in the live tree by metadata id, then collects all
+     * Finds the group node in the live tree by id, then collects all
      * leaf reward IDs beneath it.
      */
     private _collectGroupLeafIds(root: IRewardTreeNode<Reward>): Set<string> {

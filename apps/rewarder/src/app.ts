@@ -904,7 +904,7 @@ class RewarderApp {
 
 const computePercentage = (counter: number, threshold: number): number => {
     const computingThreshold = Math.max(1, threshold - 1);
-    return Math.max(0, Math.min(100, (counter / computingThreshold) * 100));
+    return Maths.clamp((counter / computingThreshold) * 100, 0, 100);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

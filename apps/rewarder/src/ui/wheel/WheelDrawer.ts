@@ -19,7 +19,7 @@ interface ISpinningWheelDrawer {
 
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
 class CanvasWheelDrawer implements ISpinningWheelDrawer {
-    private static readonly BASE_OFFSET = -Math.PI / 2; // rotate so angle 0 points to the top
+    private static readonly BASE_OFFSET = -Maths.RIGHT_ANGLE; // rotate so angle 0 points to the top
 
     private readonly canvas: HTMLCanvasElement;
     private readonly ctx:    CanvasRenderingContext2D;
@@ -67,7 +67,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         const r = wheelShape.r;
 
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, r, 0, Maths.TAU);
         ctx.strokeStyle = "#2a2a5a";
         ctx.lineWidth   = Math.max(1, r * 0.015);
         ctx.stroke();
@@ -100,7 +100,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.fillStyle = "rgba(255,255,255,0.06)";
         ctx.fill();
 
-        // const isFullArc = Math.abs(angles.sweep - 2 * Math.PI) < 0.001;
+        // const isFullArc = Math.abs(angles.sweep - Maths.TAU) < 0.001;
         // // Stroke segment borders except for full circles (to avoid a thin gap in that case)
         // if (!isFullArc) {
         //     this.strokeSegmentBorder(r);
@@ -109,7 +109,6 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
 
     private strokeSegmentBorder(radius: number) {
         const ctx = this.ctx;
-
         ctx.strokeStyle = "#0f172a";
         ctx.lineWidth   = Math.max(1, radius * 0.006);
         ctx.stroke();
@@ -131,7 +130,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         const arcLen = angles.sweep * txtR;   // arc length at label radius
 
         // Font size adapts to canvas size and available arc length
-        const fontSize = Math.max(r * 0.05, Math.min(r * 0.098, arcLen * 0.45));
+        const fontSize = Maths.clamp(arcLen * 0.45, r * 0.05, r * 0.098);
         const maxChars = Math.floor(arcLen / (fontSize * 0.62));
         if (maxChars < 1) return;
 
@@ -163,7 +162,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         const r = wheelShape.r;
 
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, r, 0, Maths.TAU);
         ctx.strokeStyle = "#4a4a8a";
         ctx.lineWidth   = Math.max(1, r * 0.023);
         ctx.stroke();
@@ -177,7 +176,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
 
         const capR = r * 0.10;
         ctx.beginPath();
-        ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
+        ctx.arc(cx, cy, capR, 0, Maths.TAU);
         ctx.fillStyle   = "#0f172a";
         ctx.fill();
         ctx.strokeStyle = "#c084fc";

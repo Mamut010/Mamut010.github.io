@@ -1,5 +1,5 @@
 class WeightedUntilLeafTreeWalkPlanner<TReward> implements IRewardTreeWalkPlanner<TReward> {
-    public async prepare(
+    public async plan(
         tree: IRewardTree<TReward>,
         executionContext: RewardExecutionContext
     ): Promise<IRewardTreeWalker<TReward> | undefined> {
@@ -32,19 +32,19 @@ class WeightedUntilLeafTreeWalker<TReward> implements IRewardTreeWalker<TReward>
     }
 
     public *walk(): Iterable<IRewardTreeEdge<TReward>> {
-        let nextEdges = this.startNode.childEdges;
+        let nextEdges = this._tree.root.childEdges;
         while (nextEdges.length > 0) {
-            const nextEdge = this.selectEdge(nextEdges);
+            const selectedEdge = this.selectEdge(nextEdges);
             
-            yield nextEdge;
+            yield selectedEdge;
 
-            nextEdges = nextEdge.target.childEdges;
+            nextEdges = selectedEdge.target.childEdges;
         }
     }
 
     private selectEdge(edges: readonly IRewardTreeEdge<TReward>[]): IRewardTreeEdge<TReward> {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
+        const selectedEdge = Randoms.nextItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }
