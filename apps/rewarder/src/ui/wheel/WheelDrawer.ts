@@ -100,8 +100,18 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.fillStyle = "rgba(255,255,255,0.06)";
         ctx.fill();
 
+        // const isFullArc = Math.abs(angles.sweep - 2 * Math.PI) < 0.001;
+        // // Stroke segment borders except for full circles (to avoid a thin gap in that case)
+        // if (!isFullArc) {
+        //     this.strokeSegmentBorder(r);
+        // }
+    }
+
+    private strokeSegmentBorder(radius: number) {
+        const ctx = this.ctx;
+
         ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth   = Math.max(1, r * 0.011);
+        ctx.lineWidth   = Math.max(1, radius * 0.006);
         ctx.stroke();
     }
 
