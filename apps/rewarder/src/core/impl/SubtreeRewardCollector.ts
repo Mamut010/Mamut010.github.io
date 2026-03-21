@@ -1,7 +1,8 @@
 class SubtreeRewardCollector<TReward> implements IRewardCollector<TReward> {
     public collect(
         node: IRewardTreeNode<TReward>,
-        path: IRewardTreeEdge<TReward>[],
+        tree: IRewardTree<TReward>,
+        path: readonly IRewardTreeEdge<TReward>[],
         executionContext: RewardExecutionContext
         ): RewardResult<TReward> {
         const accum: TReward[] = [];

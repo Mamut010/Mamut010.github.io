@@ -172,26 +172,36 @@ class RewardTrees {
         return new RewardTree(root);
     }
 }
-class BaseEdgeProvider {
-    getEdges(node) {
-        return node.childEdges;
+class WeightedUntilLeafTreeWalkPlanner {
+    async prepare(tree, executionContext) {
+        return new WeightedUntilLeafTreeWalker(tree, executionContext);
     }
 }
 class WeightedUntilLeafTreeWalker {
-    constructor(edgeProvider) {
-        this.edgeProvider = edgeProvider;
+    constructor(_tree, _executionContext) {
+        this._tree = _tree;
+        this._executionContext = _executionContext;
     }
-    next(currentNode, executionContext) {
-        const edges = this.edgeProvider.getEdges(currentNode);
-        if (edges.length === 0) {
-            return Promise.resolve(undefined);
+    get tree() {
+        return this._tree;
+    }
+    get executionContext() {
+        return this._executionContext;
+    }
+    get startNode() {
+        return this._tree.root;
+    }
+    *walk() {
+        let nextEdges = this.startNode.childEdges;
+        while (nextEdges.length > 0) {
+            const nextEdge = this.selectEdge(nextEdges);
+            yield nextEdge;
+            nextEdges = nextEdge.target.childEdges;
         }
-        const nextEdge = this.selectEdge(edges, executionContext.rng);
-        return Promise.resolve(nextEdge);
     }
-    selectEdge(edges, rng) {
+    selectEdge(edges) {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => rng.next());
+        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }
@@ -199,7 +209,7 @@ class WeightedUntilLeafTreeWalker {
     }
 }
 class SubtreeRewardCollector {
-    collect(node, path, executionContext) {
+    collect(node, tree, path, executionContext) {
         const accum = [];
         let currentNodes = [node];
         while (currentNodes.length > 0) {
@@ -216,20 +226,25 @@ class SubtreeRewardCollector {
     }
 }
 class RewardResolver {
-    constructor(walker, collector) {
-        this.walker = walker;
+    constructor(walkPlanner, collector) {
+        this.walkPlanner = walkPlanner;
         this.collector = collector;
     }
     async resolve(tree, executionContext) {
-        let currentNode = tree.root;
-        let nextEdge = await this.walker.next(currentNode, executionContext);
-        const path = [];
-        while (nextEdge) {
-            path.push(nextEdge);
-            currentNode = nextEdge.target;
-            nextEdge = await this.walker.next(currentNode, executionContext);
+        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        if (!walker) {
+            return {
+                rewards: [],
+                path: [],
+            };
         }
-        const result = this.collector.collect(currentNode, path, executionContext);
+        let currentNode = walker.startNode;
+        const path = [];
+        for (const edge of walker.walk()) {
+            path.push(edge);
+            currentNode = edge.target;
+        }
+        const result = this.collector.collect(currentNode, walker.tree, path, executionContext);
         return result;
     }
 }
@@ -358,9 +373,9 @@ class RewardTreeFactory {
 function buildPipeline(params) {
     const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
     const treeFactory = new RewardTreeFactory(nodes);
-    const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
+    const walkPlanner = new WeightedUntilLeafTreeWalkPlanner();
     const collector = new SubtreeRewardCollector();
-    const resolver = new RewardResolver(walker, collector);
+    const resolver = new RewardResolver(walkPlanner, collector);
     const pipeline = new RewardPipeline(treeFactory, resolver);
     let pityInterceptor = null;
     let stdPityInterceptor = null;
@@ -576,64 +591,62 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 // ===== Storage =====
-const STORAGE_PREFIX = "REWARDER_";
-function storageKey(suffix) {
-    return STORAGE_PREFIX + suffix;
-}
-function storageLoadProfiles() {
-    try {
-        const raw = localStorage.getItem(storageKey("Profiles"));
-        if (raw)
-            return JSON.parse(raw);
+class LocalStorageService {
+    constructor(prefix) {
+        this.prefix = prefix;
     }
-    catch (_) { /* ignore */ }
-    return [];
-}
-function storageSaveProfiles(profiles) {
-    try {
-        localStorage.setItem(storageKey("Profiles"), JSON.stringify(profiles));
+    loadProfiles() {
+        try {
+            const raw = localStorage.getItem(this.storageKey("Profiles"));
+            if (raw)
+                return JSON.parse(raw);
+        }
+        catch (_) { /* ignore */ }
+        return [];
     }
-    catch (_) { /* ignore */ }
-}
-function storageLoadActiveProfileId() {
-    try {
-        return localStorage.getItem(storageKey("ActiveProfileId"));
+    saveProfiles(profiles) {
+        try {
+            localStorage.setItem(this.storageKey("Profiles"), JSON.stringify(profiles));
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-    return null;
-}
-function storageSaveActiveProfileId(id) {
-    try {
-        localStorage.setItem(storageKey("ActiveProfileId"), id);
+    loadActiveProfileId() {
+        try {
+            return localStorage.getItem(this.storageKey("ActiveProfileId"));
+        }
+        catch (_) { /* ignore */ }
+        return null;
     }
-    catch (_) { /* ignore */ }
-}
-function storageLoadStats(profileId) {
-    try {
-        const raw = localStorage.getItem(storageKey("Stats_" + profileId));
-        if (raw)
-            return JSON.parse(raw);
+    saveActiveProfileId(id) {
+        try {
+            localStorage.setItem(this.storageKey("ActiveProfileId"), id);
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-    return null;
-}
-function storageSaveStats(profileId, stats) {
-    try {
-        localStorage.setItem(storageKey("Stats_" + profileId), JSON.stringify(stats));
+    loadStats(profileId) {
+        try {
+            const raw = localStorage.getItem(this.storageKey("Stats_" + profileId));
+            if (raw)
+                return JSON.parse(raw);
+        }
+        catch (_) { /* ignore */ }
+        return null;
     }
-    catch (_) { /* ignore */ }
-}
-function storageDeleteStats(profileId) {
-    try {
-        localStorage.removeItem(storageKey("Stats_" + profileId));
+    saveStats(profileId, stats) {
+        try {
+            localStorage.setItem(this.storageKey("Stats_" + profileId), JSON.stringify(stats));
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-}
-function generateProfileId() {
-    return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
-}
-function generateFeaturedPityEntryId() {
-    return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    deleteStats(profileId) {
+        try {
+            localStorage.removeItem(this.storageKey("Stats_" + profileId));
+        }
+        catch (_) { /* ignore */ }
+    }
+    storageKey(suffix) {
+        return this.prefix ? `${this.prefix}${suffix}` : suffix;
+    }
 }
 class Point2 {
     constructor(x = 0, y = 0) {
@@ -1254,7 +1267,7 @@ SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10�
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
-    constructor(colorProvider = new CyclingColorProvider()) {
+    constructor(storage, colorProvider) {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
@@ -1274,6 +1287,7 @@ class RewarderService {
         this.rng = new MathRandomNumberGenerator();
         this.profiles = [];
         this.activeProfileId = "";
+        this._storage = storage;
         this._colorProvider = colorProvider;
     }
     // ===== Init =====
@@ -1332,7 +1346,7 @@ class RewarderService {
     }
     // ===== Featured Pity Entry CRUD =====
     addFeaturedPityEntry() {
-        const id = generateFeaturedPityEntryId();
+        const id = this.generateFeaturedPityEntryId();
         this.featuredPityEntries.push({ id, threshold: 2, groupId: null, featuredId: null });
         return id;
     }
@@ -1476,7 +1490,7 @@ class RewarderService {
             featuredPityEnabled: this.featuredPityEnabled,
             featuredPityEntries: this.featuredPityEntries,
         };
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
     saveCurrentStats() {
         const stats = {
@@ -1491,7 +1505,7 @@ class RewarderService {
             stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
             featuredPityCounters: Object.fromEntries(this.featuredPityInterceptors.map(i => [i.entryId, i.counter])),
         };
-        storageSaveStats(this.activeProfileId, stats);
+        this._storage.saveStats(this.activeProfileId, stats);
     }
     // Returns true if the active profile was replaced (caller should do a full re-render).
     switchProfile(id) {
@@ -1502,13 +1516,13 @@ class RewarderService {
             return false;
         this.saveCurrentStats();
         this.activeProfileId = id;
-        storageSaveActiveProfileId(id);
+        this._storage.saveActiveProfileId(id);
         this.totalRolls = 0;
         this.rewardCounts = new Map();
         this.history = [];
         this.applyProfile(profile);
         this.rebuildPipeline();
-        const stats = storageLoadStats(id);
+        const stats = this._storage.loadStats(id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)
@@ -1525,7 +1539,7 @@ class RewarderService {
         this.saveCurrentStats();
         const num = this.profiles.length + 1;
         const profile = {
-            id: generateProfileId(),
+            id: this.generateProfileId(),
             name: "Profile " + num,
             nodes: defaultRewardNodes(),
             pityEnabled: true,
@@ -1539,9 +1553,9 @@ class RewarderService {
             featuredPityEntries: [],
         };
         this.profiles.push(profile);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
         this.activeProfileId = profile.id;
-        storageSaveActiveProfileId(profile.id);
+        this._storage.saveActiveProfileId(profile.id);
         this.totalRolls = 0;
         this.rewardCounts = new Map();
         this.history = [];
@@ -1555,19 +1569,19 @@ class RewarderService {
         const idx = this.profiles.findIndex(p => p.id === id);
         if (idx === -1)
             return false;
-        storageDeleteStats(id);
+        this._storage.deleteStats(id);
         this.profiles.splice(idx, 1);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
         if (this.activeProfileId === id) {
             const next = this.profiles[Math.max(0, idx - 1)];
             this.activeProfileId = next.id;
-            storageSaveActiveProfileId(next.id);
+            this._storage.saveActiveProfileId(next.id);
             this.totalRolls = 0;
             this.rewardCounts = new Map();
             this.history = [];
             this.applyProfile(next);
             this.rebuildPipeline();
-            const stats = storageLoadStats(next.id);
+            const stats = this._storage.loadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
                 if (this.pityInterceptor)
@@ -1587,14 +1601,14 @@ class RewarderService {
         if (idx === -1)
             return;
         this.profiles[idx].name = name || "Profile";
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
     loadState() {
-        let profiles = storageLoadProfiles();
-        let activeId = storageLoadActiveProfileId();
+        let profiles = this._storage.loadProfiles();
+        let activeId = this._storage.loadActiveProfileId();
         if (profiles.length === 0) {
             const firstProfile = {
-                id: generateProfileId(),
+                id: this.generateProfileId(),
                 name: "Default",
                 nodes: defaultRewardNodes(),
                 pityEnabled: true,
@@ -1608,17 +1622,17 @@ class RewarderService {
                 featuredPityEntries: [],
             };
             profiles = [firstProfile];
-            storageSaveProfiles(profiles);
+            this._storage.saveProfiles(profiles);
             activeId = firstProfile.id;
-            storageSaveActiveProfileId(activeId);
+            this._storage.saveActiveProfileId(activeId);
         }
         this.profiles = profiles;
         const active = profiles.find(p => p.id === activeId) ?? profiles[0];
         this.activeProfileId = active.id;
-        storageSaveActiveProfileId(this.activeProfileId);
+        this._storage.saveActiveProfileId(this.activeProfileId);
         this.applyProfile(active);
         this.rebuildPipeline();
-        const stats = storageLoadStats(active.id);
+        const stats = this._storage.loadStats(active.id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)
@@ -1649,7 +1663,7 @@ class RewarderService {
             const legacyFeaturedId = profile.featuredPityFeaturedId ?? null;
             const legacyThreshold = profile.featuredPityThreshold ?? 2;
             this.featuredPityEntries = (legacyGroupId && legacyFeaturedId)
-                ? [{ id: generateFeaturedPityEntryId(), threshold: legacyThreshold,
+                ? [{ id: this.generateFeaturedPityEntryId(), threshold: legacyThreshold,
                         groupId: legacyGroupId, featuredId: legacyFeaturedId }]
                 : [];
         }
@@ -1662,11 +1676,17 @@ class RewarderService {
             reward: new Reward(h.rewardId, h.rewardName),
         }));
     }
+    generateProfileId() {
+        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    }
+    generateFeaturedPityEntryId() {
+        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    }
 }
 // ===== App =====
 class RewarderApp {
     constructor() {
-        this.svc = new RewarderService();
+        this.svc = new RewarderService(new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.isRolling = false;
         // ── Composition root ─────────────────────────────────────────────────────
         this.spinModeFactory = new WheelSpinModeFactory();

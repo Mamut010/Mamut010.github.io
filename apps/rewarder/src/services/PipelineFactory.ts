@@ -30,11 +30,11 @@ function buildPipeline(params: PipelineBuildingParams): PipelineBuildingResult {
         featuredConfigs,
     } = params;
 
-    const treeFactory = new RewardTreeFactory(nodes);
-    const walker      = new WeightedUntilLeafTreeWalker<Reward>(new BaseEdgeProvider<Reward>());
-    const collector   = new SubtreeRewardCollector<Reward>();
-    const resolver    = new RewardResolver<Reward>(walker, collector);
-    const pipeline    = new RewardPipeline(treeFactory, resolver);
+    const treeFactory   = new RewardTreeFactory(nodes);
+    const walkPlanner   = new WeightedUntilLeafTreeWalkPlanner<Reward>();
+    const collector     = new SubtreeRewardCollector<Reward>();
+    const resolver      = new RewardResolver<Reward>(walkPlanner, collector);
+    const pipeline      = new RewardPipeline(treeFactory, resolver);
 
     let pityInterceptor:    HardPityInterceptor    | null = null;
     let stdPityInterceptor: StandardPityInterceptor | null = null;

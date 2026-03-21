@@ -1,20 +1,26 @@
 class RewardResolver<TReward> implements IRewardResolver<TReward> {
     public constructor(
-        public readonly walker: IRewardTreeWalker<TReward>,
+        public readonly walkPlanner: IRewardTreeWalkPlanner<TReward>,
         public readonly collector: IRewardCollector<TReward>,
     ) {}
 
     public async resolve(tree: IRewardTree<TReward>, executionContext: RewardExecutionContext): Promise<RewardResult<TReward>> {
-        let currentNode = tree.root;
-        let nextEdge = await this.walker.next(currentNode, executionContext);
-        const path: IRewardTreeEdge<TReward>[] = [];
-        while (nextEdge) {
-            path.push(nextEdge);
-            currentNode = nextEdge.target;
-            nextEdge = await this.walker.next(currentNode, executionContext);
+        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        if (!walker) {
+            return {
+                rewards: [],
+                path: [],
+            }
         }
 
-        const result = this.collector.collect(currentNode, path, executionContext);
+        let currentNode = walker.startNode;
+        const path: IRewardTreeEdge<TReward>[] = [];
+        for (const edge of walker.walk()) {
+            path.push(edge);
+            currentNode = edge.target;
+        }
+
+        const result = this.collector.collect(currentNode, walker.tree, path, executionContext);
         return result;
     }
 }

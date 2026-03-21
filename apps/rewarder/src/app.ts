@@ -6,7 +6,10 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private svc          = new RewarderService();
+    private svc          = new RewarderService(
+        new LocalStorageService("REWARDER_"),
+        new CyclingColorProvider(),
+    );
     private wheel!:      SpinningWheel;
     private isRolling    = false;
     private spinStrategy!: IWheelSpinStrategy;   // assigned in init()
