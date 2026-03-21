@@ -79,39 +79,84 @@ class RewardTreeEdge {
     }
 }
 class RewardTreeNode {
-    constructor(reward, metadata) {
+    constructor(id, reward, metadata) {
+        this._id = id;
         this._reward = reward;
-        this._outgoingEdges = new Map();
-        this._metadata = metadata;
+        this._childEdges = new Map();
+        this._metadata = metadata ?? {};
+    }
+    get id() {
+        return this._id;
     }
     get reward() {
         return this._reward;
     }
-    get metadata() {
-        return this._metadata;
-    }
-    get outgoingEdges() {
-        return [...this._outgoingEdges.values()];
+    get childEdges() {
+        return [...this._childEdges.values()];
     }
     get children() {
-        return [...this._outgoingEdges.keys()];
+        return [...this._childEdges.values()].map(edge => edge.target);
     }
-    connect(node, weight) {
-        if (this._outgoingEdges.has(node)) {
+    get parentEdge() {
+        return this._parentEdge;
+    }
+    get parent() {
+        return this._parentEdge?.source;
+    }
+    metadata() {
+        return this._metadata;
+    }
+    connectParent(node, weight) {
+        const currentParent = this._parentEdge?.source;
+        if (currentParent?.id === node.id) {
+            return undefined;
+        }
+        currentParent?.disconnectChild(this);
+        this._parentEdge = new RewardTreeEdge(node, this, weight);
+        node.connectChild(this, weight);
+        return this._parentEdge;
+    }
+    connectChild(node, weight) {
+        if (this._childEdges.has(node.id)) {
             return undefined;
         }
         const edge = new RewardTreeEdge(this, node, weight);
-        this._outgoingEdges.set(node, edge);
+        this._childEdges.set(node.id, edge);
+        node.connectParent(this, weight);
         return edge;
     }
-    disconnect(node) {
-        return this._outgoingEdges.delete(node);
+    disconnectParent() {
+        const parent = this._parentEdge?.source;
+        if (!parent) {
+            return false;
+        }
+        this._parentEdge = undefined;
+        parent.disconnectChild(this);
+        return true;
     }
-    disconnectAll() {
-        this._outgoingEdges.clear();
+    disconnectChild(node) {
+        const edge = this._childEdges.get(node.id);
+        if (!edge) {
+            return false;
+        }
+        this._childEdges.delete(node.id);
+        edge.target.disconnectParent();
+        return true;
     }
-    getConnection(node) {
-        return this._outgoingEdges.get(node);
+    disconnectChildren() {
+        const children = this.children;
+        this._childEdges.clear();
+        for (const child of children) {
+            child.disconnectParent();
+        }
+    }
+}
+class RewardTreeNodes {
+    static empty(id, metadata) {
+        return new RewardTreeNode(id, undefined, metadata);
+    }
+    static create(id, reward, metadata) {
+        return new RewardTreeNode(id, reward, metadata);
     }
 }
 class RewardTree {
@@ -122,9 +167,14 @@ class RewardTree {
         return this._root;
     }
 }
+class RewardTrees {
+    static create(root) {
+        return new RewardTree(root);
+    }
+}
 class BaseEdgeProvider {
     getEdges(node) {
-        return node.outgoingEdges;
+        return node.childEdges;
     }
 }
 class WeightedUntilLeafTreeWalker {
@@ -287,20 +337,20 @@ class RewardTreeFactory {
         this.nodes = nodes;
     }
     async create(executionContext) {
-        const root = new RewardTreeNode();
+        const root = RewardTreeNodes.empty("root");
         for (const node of this.nodes) {
-            root.connect(this.buildNode(node), node.rate);
+            root.connectChild(this.buildNode(node), node.rate);
         }
-        return new RewardTree(root);
+        return RewardTrees.create(root);
     }
     buildNode(config) {
-        const metadata = { id: config.id };
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
+            const reward = new Reward(config.id, config.name);
+            return RewardTreeNodes.create(config.id, reward);
         }
-        const groupNode = new RewardTreeNode(undefined, metadata);
+        const groupNode = RewardTreeNodes.empty(config.id);
         for (const child of config.children) {
-            groupNode.connect(this.buildNode(child), child.rate);
+            groupNode.connectChild(this.buildNode(child), child.rate);
         }
         return groupNode;
     }
@@ -497,7 +547,7 @@ class FeaturedPityInterceptor {
     }
     _findNodeById(node, id) {
         for (const child of node.children) {
-            if (child.metadata?.["id"] === id)
+            if (child.id === id)
                 return child;
             const found = this._findNodeById(child, id);
             if (found)
@@ -506,7 +556,7 @@ class FeaturedPityInterceptor {
         return undefined;
     }
     _collectLeafIds(node, ids) {
-        if (node.reward !== undefined) {
+        if (node.reward) {
             ids.add(node.reward.id);
             return;
         }

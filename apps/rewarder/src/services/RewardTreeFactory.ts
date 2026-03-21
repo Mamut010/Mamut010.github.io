@@ -2,21 +2,21 @@ class RewardTreeFactory implements IRewardTreeFactory<Reward> {
     public constructor(public readonly nodes: readonly RewardNodeConfig[]) {}
 
     public async create(executionContext: RewardExecutionContext): Promise<IRewardTree<Reward>> {
-        const root = new RewardTreeNode<Reward>();
+        const root = RewardTreeNodes.empty<Reward>("root");
         for (const node of this.nodes) {
-            root.connect(this.buildNode(node), node.rate);
+            root.connectChild(this.buildNode(node), node.rate);
         }
-        return new RewardTree(root);
+        return RewardTrees.create(root);
     }
 
-    private buildNode(config: RewardNodeConfig): RewardTreeNode<Reward> {
-        const metadata = { id: config.id };
+    private buildNode(config: RewardNodeConfig): IRewardTreeNode<Reward> {
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
+            const reward = new Reward(config.id, config.name);
+            return RewardTreeNodes.create(config.id, reward);
         }
-        const groupNode = new RewardTreeNode<Reward>(undefined, metadata);
+        const groupNode = RewardTreeNodes.empty<Reward>(config.id);
         for (const child of config.children) {
-            groupNode.connect(this.buildNode(child), child.rate);
+            groupNode.connectChild(this.buildNode(child), child.rate);
         }
         return groupNode;
     }
