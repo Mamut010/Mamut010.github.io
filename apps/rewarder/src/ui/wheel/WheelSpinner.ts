@@ -36,14 +36,14 @@ class DefaultWheelSpinner implements IWheelSpinner {
         segAngles:   SegmentAngles[],
         onFrame:     () => void,
     ): Promise<void> {
-        const TAU        = 2 * Math.PI;
+        const TAU        = Maths.TAU;
         const calculator = this.calculatorFactory.create(context);
         const landing    = calculator.calculate({ targetIndex, segments, segAngles });
 
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
-        const targetRot   = ((-landing.landingAngle % TAU) + TAU) % TAU;
-        const currentNorm = ((this.animator.currentRotation % TAU) + TAU) % TAU;
+        const targetRot   = Maths.normalizeAngle(-landing.landingAngle);
+        const currentNorm = Maths.normalizeAngle(this.animator.currentRotation);
         let   delta       = targetRot - currentNorm;
         if (delta <= 0) delta += TAU;
         delta += DefaultWheelSpinner.MIN_SPINS * TAU;

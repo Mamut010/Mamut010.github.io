@@ -147,12 +147,12 @@ class TwoPhaseWheelAnimator implements ISpinningWheelAnimator {
      */
     private computePosition(t: number): number {
         const baseTarget = this.overshootTarget ?? this.finalRotation;
-        const basePos    = this.spinFromRotation + this.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        const basePos    = this.spinFromRotation + Maths.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
 
         if (this.overshootTarget == null) return basePos;
 
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = this.smoothstepTail(t, this.blendStart);
+        const blend = Maths.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
         return basePos + blend * (this.finalRotation - basePos);
     }
@@ -166,21 +166,5 @@ class TwoPhaseWheelAnimator implements ISpinningWheelAnimator {
         const resolve          = this.resolveSpinPromise;
         this.resolveSpinPromise = null;
         resolve?.();
-    }
-
-    // ── Easing / math helpers ─────────────────────────────────────────────────
-
-    private easeOutQuart(t: number): number {
-        return 1 - Math.pow(1 - Math.min(t, 1), 4);
-    }
-
-    /**
-     * Smoothstep that maps [start, 1] → [0, 1] and is 0 for t ≤ start.
-     * Used to define the correction blend window.
-     */
-    private smoothstepTail(t: number, start: number): number {
-        if (t <= start) return 0;
-        const u = (t - start) / (1 - start);   // remap to [0, 1]
-        return u * u * (3 - 2 * u);             // classic smoothstep
     }
 }

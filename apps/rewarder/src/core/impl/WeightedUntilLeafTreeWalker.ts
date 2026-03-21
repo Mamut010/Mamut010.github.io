@@ -44,7 +44,7 @@ class WeightedUntilLeafTreeWalker<TReward> implements IRewardTreeWalker<TReward>
 
     private selectEdge(edges: readonly IRewardTreeEdge<TReward>[]): IRewardTreeEdge<TReward> {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
+        const selectedEdge = Randoms.nextItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }
