@@ -9,3 +9,9 @@ class RewardTree<TReward> implements IRewardTree<TReward> {
         return this._root;
     }
 }
+
+class RewardTrees {
+    public static create<TReward>(root: IRewardTreeNode<TReward>): IRewardTree<TReward> {
+        return new RewardTree(root);
+    }
+}

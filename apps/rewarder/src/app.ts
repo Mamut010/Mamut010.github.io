@@ -6,14 +6,19 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private svc          = new RewarderService();
     private wheel!:      SpinningWheel;
     private isRolling    = false;
     private spinStrategy!: IWheelSpinStrategy;   // assigned in init()
 
     // ── Composition root ─────────────────────────────────────────────────────
-    private readonly spinModeFactory:     IWheelSpinStrategyFactory       = new WheelSpinModeFactory();
-    private readonly calculatorFactory:   ISpinningAngleCalculatorFactory  = new WeightedRandomCalculatorFactory();
+    private readonly svc = new RewarderService(
+        new PipelineFactory(),
+        new LocalStorageService("REWARDER_"),
+        new CyclingColorProvider(),
+    );
+    private readonly spinModeFactory = new WheelSpinModeFactory();
+    private readonly calculatorFactory = new WeightedRandomCalculatorFactory();
+    private readonly rng = new MathRandomNumberGenerator();
 
     public init(): void {
         this.svc.init();
@@ -222,7 +227,7 @@ class RewarderApp {
         this.setRollButtonsDisabled(true);
 
         for (let i = 0; i < count; i++) {
-            const { reward, rollNum } = await this.svc.roll();
+            const { reward, rollNum } = await this.svc.roll(this.rng);
             await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
             this.renderLatestResult(reward, rollNum);
             this.renderStats();

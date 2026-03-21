@@ -1,6 +1,14 @@
-interface IRewardTreeWalker<TReward> {
-    next(
-        currentNode: IRewardTreeNode<TReward>,
+interface IRewardTreeWalkPlanner<TReward> {
+    prepare(
+        tree: IRewardTree<TReward>,
         executionContext: RewardExecutionContext
-        ): Promise<IRewardTreeEdge<TReward> | undefined>;
+    ): Promise<IRewardTreeWalker<TReward> | undefined>;
+}
+
+interface IRewardTreeWalker<TReward> {
+    get executionContext(): RewardExecutionContext;
+    get tree(): IRewardTree<TReward>;
+    get startNode(): IRewardTreeNode<TReward>;
+
+    walk(): Iterable<IRewardTreeEdge<TReward>>;
 }

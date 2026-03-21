@@ -20,10 +20,16 @@ interface RewardNodeConfig {
     children: RewardNodeConfig[];
 }
 
+const PityNodeKind = {
+    Leaf: "leaf",
+    Group: "group",
+} as const;
+type PityNodeKind = typeof PityNodeKind[keyof typeof PityNodeKind];
+
 interface PityNodeChoice {
     id: string;
     label: string;
-    kind: "leaf" | "group";
+    kind: PityNodeKind;
 }
 
 function collectLeaves(nodes: readonly RewardNodeConfig[]): RewardNodeConfig[] {
@@ -45,10 +51,10 @@ function collectPityChoices(
     const result: PityNodeChoice[] = [];
     for (const node of nodes) {
         if (node.isGroup) {
-            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: "group" });
+            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: PityNodeKind.Group });
             result.push(...collectPityChoices(node.children, indent + "\u00a0\u00a0"));
         } else {
-            result.push({ id: node.id, label: indent + node.name, kind: "leaf" });
+            result.push({ id: node.id, label: indent + node.name, kind: PityNodeKind.Leaf });
         }
     }
     return result;

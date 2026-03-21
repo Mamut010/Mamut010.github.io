@@ -1,23 +1,50 @@
-class WeightedUntilLeafTreeWalker<TReward> implements IRewardTreeWalker<TReward> {
-    public constructor(
-        public readonly edgeProvider: IEdgeProvider<TReward>
-    ) {}
-    
-    public next(
-        currentNode: IRewardTreeNode<TReward>,
+class WeightedUntilLeafTreeWalkPlanner<TReward> implements IRewardTreeWalkPlanner<TReward> {
+    public async prepare(
+        tree: IRewardTree<TReward>,
         executionContext: RewardExecutionContext
-        ): Promise<IRewardTreeEdge<TReward> | undefined> {
-        const edges = this.edgeProvider.getEdges(currentNode);
-        if (edges.length === 0) {
-            return Promise.resolve(undefined);
-        }
-        const nextEdge = this.selectEdge(edges, executionContext.rng);
-        return Promise.resolve(nextEdge);
+    ): Promise<IRewardTreeWalker<TReward> | undefined> {
+        return new WeightedUntilLeafTreeWalker(tree, executionContext);
+    }
+}
+
+class WeightedUntilLeafTreeWalker<TReward> implements IRewardTreeWalker<TReward> {
+    private readonly _tree: IRewardTree<TReward>;
+    private readonly _executionContext: RewardExecutionContext;
+
+    public constructor(
+        _tree: IRewardTree<TReward>,
+        _executionContext: RewardExecutionContext,
+    ) {
+        this._tree = _tree;
+        this._executionContext = _executionContext;
+    }
+    
+    get tree(): IRewardTree<TReward> {
+        return this._tree;
     }
 
-    private selectEdge(edges: readonly IRewardTreeEdge<TReward>[], rng: IRandomNumberGenerator): IRewardTreeEdge<TReward> {
+    get executionContext(): RewardExecutionContext {
+        return this._executionContext;
+    }
+
+    get startNode(): IRewardTreeNode<TReward> {
+        return this._tree.root;
+    }
+
+    public *walk(): Iterable<IRewardTreeEdge<TReward>> {
+        let nextEdges = this.startNode.childEdges;
+        while (nextEdges.length > 0) {
+            const nextEdge = this.selectEdge(nextEdges);
+            
+            yield nextEdge;
+
+            nextEdges = nextEdge.target.childEdges;
+        }
+    }
+
+    private selectEdge(edges: readonly IRewardTreeEdge<TReward>[]): IRewardTreeEdge<TReward> {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => rng.next());
+        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }

@@ -1,6 +1,7 @@
 interface IRewardCollector<TReward> {
     collect(
         node: IRewardTreeNode<TReward>,
-        path: IRewardTreeEdge<TReward>[],
+        tree: IRewardTree<TReward>,
+        path: readonly IRewardTreeEdge<TReward>[],
         executionContext: RewardExecutionContext): RewardResult<TReward>;
 }

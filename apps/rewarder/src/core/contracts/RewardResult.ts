@@ -1,4 +1,4 @@
 type RewardResult<TReward> = {
     rewards: TReward[],
-    path: IRewardTreeEdge<TReward>[],
+    path: readonly IRewardTreeEdge<TReward>[],
 };

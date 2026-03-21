@@ -79,39 +79,84 @@ class RewardTreeEdge {
     }
 }
 class RewardTreeNode {
-    constructor(reward, metadata) {
+    constructor(id, reward, metadata) {
+        this._id = id;
         this._reward = reward;
-        this._outgoingEdges = new Map();
-        this._metadata = metadata;
+        this._childEdges = new Map();
+        this._metadata = metadata ?? {};
+    }
+    get id() {
+        return this._id;
     }
     get reward() {
         return this._reward;
     }
-    get metadata() {
-        return this._metadata;
-    }
-    get outgoingEdges() {
-        return [...this._outgoingEdges.values()];
+    get childEdges() {
+        return [...this._childEdges.values()];
     }
     get children() {
-        return [...this._outgoingEdges.keys()];
+        return [...this._childEdges.values()].map(edge => edge.target);
     }
-    connect(node, weight) {
-        if (this._outgoingEdges.has(node)) {
+    get parentEdge() {
+        return this._parentEdge;
+    }
+    get parent() {
+        return this._parentEdge?.source;
+    }
+    metadata() {
+        return this._metadata;
+    }
+    connectParent(node, weight) {
+        const currentParent = this._parentEdge?.source;
+        if (currentParent?.id === node.id) {
+            return undefined;
+        }
+        currentParent?.disconnectChild(this);
+        this._parentEdge = new RewardTreeEdge(node, this, weight);
+        node.connectChild(this, weight);
+        return this._parentEdge;
+    }
+    connectChild(node, weight) {
+        if (this._childEdges.has(node.id)) {
             return undefined;
         }
         const edge = new RewardTreeEdge(this, node, weight);
-        this._outgoingEdges.set(node, edge);
+        this._childEdges.set(node.id, edge);
+        node.connectParent(this, weight);
         return edge;
     }
-    disconnect(node) {
-        return this._outgoingEdges.delete(node);
+    disconnectParent() {
+        const parent = this._parentEdge?.source;
+        if (!parent) {
+            return false;
+        }
+        this._parentEdge = undefined;
+        parent.disconnectChild(this);
+        return true;
     }
-    disconnectAll() {
-        this._outgoingEdges.clear();
+    disconnectChild(node) {
+        const edge = this._childEdges.get(node.id);
+        if (!edge) {
+            return false;
+        }
+        this._childEdges.delete(node.id);
+        edge.target.disconnectParent();
+        return true;
     }
-    getConnection(node) {
-        return this._outgoingEdges.get(node);
+    disconnectChildren() {
+        const children = this.children;
+        this._childEdges.clear();
+        for (const child of children) {
+            child.disconnectParent();
+        }
+    }
+}
+class RewardTreeNodes {
+    static empty(id, metadata) {
+        return new RewardTreeNode(id, undefined, metadata);
+    }
+    static create(id, reward, metadata) {
+        return new RewardTreeNode(id, reward, metadata);
     }
 }
 class RewardTree {
@@ -122,26 +167,41 @@ class RewardTree {
         return this._root;
     }
 }
-class BaseEdgeProvider {
-    getEdges(node) {
-        return node.outgoingEdges;
+class RewardTrees {
+    static create(root) {
+        return new RewardTree(root);
+    }
+}
+class WeightedUntilLeafTreeWalkPlanner {
+    async prepare(tree, executionContext) {
+        return new WeightedUntilLeafTreeWalker(tree, executionContext);
     }
 }
 class WeightedUntilLeafTreeWalker {
-    constructor(edgeProvider) {
-        this.edgeProvider = edgeProvider;
+    constructor(_tree, _executionContext) {
+        this._tree = _tree;
+        this._executionContext = _executionContext;
     }
-    next(currentNode, executionContext) {
-        const edges = this.edgeProvider.getEdges(currentNode);
-        if (edges.length === 0) {
-            return Promise.resolve(undefined);
+    get tree() {
+        return this._tree;
+    }
+    get executionContext() {
+        return this._executionContext;
+    }
+    get startNode() {
+        return this._tree.root;
+    }
+    *walk() {
+        let nextEdges = this.startNode.childEdges;
+        while (nextEdges.length > 0) {
+            const nextEdge = this.selectEdge(nextEdges);
+            yield nextEdge;
+            nextEdges = nextEdge.target.childEdges;
         }
-        const nextEdge = this.selectEdge(edges, executionContext.rng);
-        return Promise.resolve(nextEdge);
     }
-    selectEdge(edges, rng) {
+    selectEdge(edges) {
         const weights = edges.map(e => e.weight);
-        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => rng.next());
+        const selectedEdge = Collections.randomItemWeighted(edges, weights, () => this.executionContext.rng.next());
         if (!selectedEdge) {
             throw new Error("No edge selected");
         }
@@ -149,7 +209,7 @@ class WeightedUntilLeafTreeWalker {
     }
 }
 class SubtreeRewardCollector {
-    collect(node, path, executionContext) {
+    collect(node, tree, path, executionContext) {
         const accum = [];
         let currentNodes = [node];
         while (currentNodes.length > 0) {
@@ -166,20 +226,25 @@ class SubtreeRewardCollector {
     }
 }
 class RewardResolver {
-    constructor(walker, collector) {
-        this.walker = walker;
+    constructor(walkPlanner, collector) {
+        this.walkPlanner = walkPlanner;
         this.collector = collector;
     }
     async resolve(tree, executionContext) {
-        let currentNode = tree.root;
-        let nextEdge = await this.walker.next(currentNode, executionContext);
-        const path = [];
-        while (nextEdge) {
-            path.push(nextEdge);
-            currentNode = nextEdge.target;
-            nextEdge = await this.walker.next(currentNode, executionContext);
+        const walker = await this.walkPlanner.prepare(tree, executionContext);
+        if (!walker) {
+            return {
+                rewards: [],
+                path: [],
+            };
         }
-        const result = this.collector.collect(currentNode, path, executionContext);
+        let currentNode = walker.startNode;
+        const path = [];
+        for (const edge of walker.walk()) {
+            path.push(edge);
+            currentNode = edge.target;
+        }
+        const result = this.collector.collect(currentNode, walker.tree, path, executionContext);
         return result;
     }
 }
@@ -216,6 +281,10 @@ class RewardPipeline {
         };
     }
 }
+const PityNodeKind = {
+    Leaf: "leaf",
+    Group: "group",
+};
 function collectLeaves(nodes) {
     const result = [];
     for (const node of nodes) {
@@ -232,11 +301,11 @@ function collectPityChoices(nodes, indent = "") {
     const result = [];
     for (const node of nodes) {
         if (node.isGroup) {
-            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: "group" });
+            result.push({ id: node.id, label: indent + "\u25b6 " + node.name, kind: PityNodeKind.Group });
             result.push(...collectPityChoices(node.children, indent + "\u00a0\u00a0"));
         }
         else {
-            result.push({ id: node.id, label: indent + node.name, kind: "leaf" });
+            result.push({ id: node.id, label: indent + node.name, kind: PityNodeKind.Leaf });
         }
     }
     return result;
@@ -287,60 +356,62 @@ class RewardTreeFactory {
         this.nodes = nodes;
     }
     async create(executionContext) {
-        const root = new RewardTreeNode();
+        const root = RewardTreeNodes.empty("root");
         for (const node of this.nodes) {
-            root.connect(this.buildNode(node), node.rate);
+            root.connectChild(this.buildNode(node), node.rate);
         }
-        return new RewardTree(root);
+        return RewardTrees.create(root);
     }
     buildNode(config) {
-        const metadata = { id: config.id };
         if (!config.isGroup) {
-            return new RewardTreeNode(new Reward(config.id, config.name), metadata);
+            const reward = new Reward(config.id, config.name);
+            return RewardTreeNodes.create(config.id, reward);
         }
-        const groupNode = new RewardTreeNode(undefined, metadata);
+        const groupNode = RewardTreeNodes.empty(config.id);
         for (const child of config.children) {
-            groupNode.connect(this.buildNode(child), child.rate);
+            groupNode.connectChild(this.buildNode(child), child.rate);
         }
         return groupNode;
     }
 }
-function buildPipeline(params) {
-    const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
-    const treeFactory = new RewardTreeFactory(nodes);
-    const walker = new WeightedUntilLeafTreeWalker(new BaseEdgeProvider());
-    const collector = new SubtreeRewardCollector();
-    const resolver = new RewardResolver(walker, collector);
-    const pipeline = new RewardPipeline(treeFactory, resolver);
-    let pityInterceptor = null;
-    let stdPityInterceptor = null;
-    const featuredPityInterceptors = [];
-    if (featuredPityEnabled) {
-        for (const cfg of featuredConfigs) {
-            featuredPityInterceptors.push(new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured));
+class PipelineFactory {
+    create(params) {
+        const { nodes, pityEnabled, pityThreshold, pityTargetConfig, stdPityEnabled, stdPityThreshold, stdPityNodes, featuredPityEnabled, featuredConfigs, } = params;
+        const treeFactory = new RewardTreeFactory(nodes);
+        const walkPlanner = new WeightedUntilLeafTreeWalkPlanner();
+        const collector = new SubtreeRewardCollector();
+        const resolver = new RewardResolver(walkPlanner, collector);
+        const pipeline = new RewardPipeline(treeFactory, resolver);
+        let pityInterceptor = null;
+        let stdPityInterceptor = null;
+        const featuredPityInterceptors = [];
+        if (featuredPityEnabled) {
+            for (const cfg of featuredConfigs) {
+                featuredPityInterceptors.push(new FeaturedPityInterceptor(cfg.entryId, cfg.threshold, cfg.group, cfg.featured));
+            }
         }
-    }
-    if (stdPityEnabled && stdPityNodes.length > 0) {
-        const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
-        if (Math.abs(stdTotal - 100) < 0.001) {
-            stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+        if (stdPityEnabled && stdPityNodes.length > 0) {
+            const stdTotal = stdPityNodes.reduce((s, n) => s + n.rate, 0);
+            if (Math.abs(stdTotal - 100) < 0.001) {
+                stdPityInterceptor = new StandardPityInterceptor(stdPityThreshold, stdPityNodes);
+            }
         }
-    }
-    if (pityEnabled) {
-        const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
-        if (targetConfig) {
-            pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+        if (pityEnabled) {
+            const targetConfig = pityTargetConfig ?? findDefaultPityTarget(nodes);
+            if (targetConfig) {
+                pityInterceptor = new HardPityInterceptor(pityThreshold, targetConfig);
+            }
         }
+        // Featured outermost (outgoing priority — final say over result),
+        // then Standard (may override tree), then Hard (forces specific node).
+        const interceptors = [
+            ...featuredPityInterceptors,
+            ...(stdPityInterceptor ? [stdPityInterceptor] : []),
+            ...(pityInterceptor ? [pityInterceptor] : []),
+        ];
+        pipeline.setInterceptors(interceptors);
+        return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
     }
-    // Featured outermost (outgoing priority — final say over result),
-    // then Standard (may override tree), then Hard (forces specific node).
-    const interceptors = [
-        ...featuredPityInterceptors,
-        ...(stdPityInterceptor ? [stdPityInterceptor] : []),
-        ...(pityInterceptor ? [pityInterceptor] : []),
-    ];
-    pipeline.setInterceptors(interceptors);
-    return { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors };
 }
 // ===== Base Pity Interceptor =====
 // Abstract base class that encapsulates the shared pity-trigger logic:
@@ -497,7 +568,7 @@ class FeaturedPityInterceptor {
     }
     _findNodeById(node, id) {
         for (const child of node.children) {
-            if (child.metadata?.["id"] === id)
+            if (child.id === id)
                 return child;
             const found = this._findNodeById(child, id);
             if (found)
@@ -506,7 +577,7 @@ class FeaturedPityInterceptor {
         return undefined;
     }
     _collectLeafIds(node, ids) {
-        if (node.reward !== undefined) {
+        if (node.reward) {
             ids.add(node.reward.id);
             return;
         }
@@ -526,64 +597,62 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 // ===== Storage =====
-const STORAGE_PREFIX = "REWARDER_";
-function storageKey(suffix) {
-    return STORAGE_PREFIX + suffix;
-}
-function storageLoadProfiles() {
-    try {
-        const raw = localStorage.getItem(storageKey("Profiles"));
-        if (raw)
-            return JSON.parse(raw);
+class LocalStorageService {
+    constructor(prefix) {
+        this.prefix = prefix;
     }
-    catch (_) { /* ignore */ }
-    return [];
-}
-function storageSaveProfiles(profiles) {
-    try {
-        localStorage.setItem(storageKey("Profiles"), JSON.stringify(profiles));
+    loadProfiles() {
+        try {
+            const raw = localStorage.getItem(this.storageKey("Profiles"));
+            if (raw)
+                return JSON.parse(raw);
+        }
+        catch (_) { /* ignore */ }
+        return [];
     }
-    catch (_) { /* ignore */ }
-}
-function storageLoadActiveProfileId() {
-    try {
-        return localStorage.getItem(storageKey("ActiveProfileId"));
+    saveProfiles(profiles) {
+        try {
+            localStorage.setItem(this.storageKey("Profiles"), JSON.stringify(profiles));
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-    return null;
-}
-function storageSaveActiveProfileId(id) {
-    try {
-        localStorage.setItem(storageKey("ActiveProfileId"), id);
+    loadActiveProfileId() {
+        try {
+            return localStorage.getItem(this.storageKey("ActiveProfileId"));
+        }
+        catch (_) { /* ignore */ }
+        return null;
     }
-    catch (_) { /* ignore */ }
-}
-function storageLoadStats(profileId) {
-    try {
-        const raw = localStorage.getItem(storageKey("Stats_" + profileId));
-        if (raw)
-            return JSON.parse(raw);
+    saveActiveProfileId(id) {
+        try {
+            localStorage.setItem(this.storageKey("ActiveProfileId"), id);
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-    return null;
-}
-function storageSaveStats(profileId, stats) {
-    try {
-        localStorage.setItem(storageKey("Stats_" + profileId), JSON.stringify(stats));
+    loadStats(profileId) {
+        try {
+            const raw = localStorage.getItem(this.storageKey("Stats_" + profileId));
+            if (raw)
+                return JSON.parse(raw);
+        }
+        catch (_) { /* ignore */ }
+        return null;
     }
-    catch (_) { /* ignore */ }
-}
-function storageDeleteStats(profileId) {
-    try {
-        localStorage.removeItem(storageKey("Stats_" + profileId));
+    saveStats(profileId, stats) {
+        try {
+            localStorage.setItem(this.storageKey("Stats_" + profileId), JSON.stringify(stats));
+        }
+        catch (_) { /* ignore */ }
     }
-    catch (_) { /* ignore */ }
-}
-function generateProfileId() {
-    return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
-}
-function generateFeaturedPityEntryId() {
-    return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    deleteStats(profileId) {
+        try {
+            localStorage.removeItem(this.storageKey("Stats_" + profileId));
+        }
+        catch (_) { /* ignore */ }
+    }
+    storageKey(suffix) {
+        return this.prefix ? `${this.prefix}${suffix}` : suffix;
+    }
 }
 class Point2 {
     constructor(x = 0, y = 0) {
@@ -1204,7 +1273,7 @@ SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10�
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
-    constructor(colorProvider = new CyclingColorProvider()) {
+    constructor(pipelineFactory, storage, colorProvider) {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
@@ -1221,9 +1290,10 @@ class RewarderService {
         this.pityInterceptor = null;
         this.stdPityInterceptor = null;
         this.featuredPityInterceptors = [];
-        this.rng = new MathRandomNumberGenerator();
         this.profiles = [];
         this.activeProfileId = "";
+        this._pipelineFactory = pipelineFactory;
+        this._storage = storage;
         this._colorProvider = colorProvider;
     }
     // ===== Init =====
@@ -1238,7 +1308,7 @@ class RewarderService {
         const targetConfig = this.pityTargetId
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = this._pipelineFactory.create({
             nodes: this.rewardNodes,
             pityEnabled: this.pityEnabled,
             pityThreshold: this.pityThreshold,
@@ -1282,7 +1352,7 @@ class RewarderService {
     }
     // ===== Featured Pity Entry CRUD =====
     addFeaturedPityEntry() {
-        const id = generateFeaturedPityEntryId();
+        const id = this.generateFeaturedPityEntryId();
         this.featuredPityEntries.push({ id, threshold: 2, groupId: null, featuredId: null });
         return id;
     }
@@ -1393,8 +1463,8 @@ class RewarderService {
         }
     }
     // ===== Rolling =====
-    async roll() {
-        const result = await this.pipeline.invoke({ rng: this.rng });
+    async roll(rng) {
+        const result = await this.pipeline.invoke({ rng });
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -1426,7 +1496,7 @@ class RewarderService {
             featuredPityEnabled: this.featuredPityEnabled,
             featuredPityEntries: this.featuredPityEntries,
         };
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
     saveCurrentStats() {
         const stats = {
@@ -1441,7 +1511,7 @@ class RewarderService {
             stdPityCounter: this.stdPityInterceptor?.counter ?? 0,
             featuredPityCounters: Object.fromEntries(this.featuredPityInterceptors.map(i => [i.entryId, i.counter])),
         };
-        storageSaveStats(this.activeProfileId, stats);
+        this._storage.saveStats(this.activeProfileId, stats);
     }
     // Returns true if the active profile was replaced (caller should do a full re-render).
     switchProfile(id) {
@@ -1452,13 +1522,13 @@ class RewarderService {
             return false;
         this.saveCurrentStats();
         this.activeProfileId = id;
-        storageSaveActiveProfileId(id);
+        this._storage.saveActiveProfileId(id);
         this.totalRolls = 0;
         this.rewardCounts = new Map();
         this.history = [];
         this.applyProfile(profile);
         this.rebuildPipeline();
-        const stats = storageLoadStats(id);
+        const stats = this._storage.loadStats(id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)
@@ -1475,7 +1545,7 @@ class RewarderService {
         this.saveCurrentStats();
         const num = this.profiles.length + 1;
         const profile = {
-            id: generateProfileId(),
+            id: this.generateProfileId(),
             name: "Profile " + num,
             nodes: defaultRewardNodes(),
             pityEnabled: true,
@@ -1489,9 +1559,9 @@ class RewarderService {
             featuredPityEntries: [],
         };
         this.profiles.push(profile);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
         this.activeProfileId = profile.id;
-        storageSaveActiveProfileId(profile.id);
+        this._storage.saveActiveProfileId(profile.id);
         this.totalRolls = 0;
         this.rewardCounts = new Map();
         this.history = [];
@@ -1505,19 +1575,19 @@ class RewarderService {
         const idx = this.profiles.findIndex(p => p.id === id);
         if (idx === -1)
             return false;
-        storageDeleteStats(id);
+        this._storage.deleteStats(id);
         this.profiles.splice(idx, 1);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
         if (this.activeProfileId === id) {
             const next = this.profiles[Math.max(0, idx - 1)];
             this.activeProfileId = next.id;
-            storageSaveActiveProfileId(next.id);
+            this._storage.saveActiveProfileId(next.id);
             this.totalRolls = 0;
             this.rewardCounts = new Map();
             this.history = [];
             this.applyProfile(next);
             this.rebuildPipeline();
-            const stats = storageLoadStats(next.id);
+            const stats = this._storage.loadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
                 if (this.pityInterceptor)
@@ -1537,14 +1607,14 @@ class RewarderService {
         if (idx === -1)
             return;
         this.profiles[idx].name = name || "Profile";
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
     loadState() {
-        let profiles = storageLoadProfiles();
-        let activeId = storageLoadActiveProfileId();
+        let profiles = this._storage.loadProfiles();
+        let activeId = this._storage.loadActiveProfileId();
         if (profiles.length === 0) {
             const firstProfile = {
-                id: generateProfileId(),
+                id: this.generateProfileId(),
                 name: "Default",
                 nodes: defaultRewardNodes(),
                 pityEnabled: true,
@@ -1558,17 +1628,17 @@ class RewarderService {
                 featuredPityEntries: [],
             };
             profiles = [firstProfile];
-            storageSaveProfiles(profiles);
+            this._storage.saveProfiles(profiles);
             activeId = firstProfile.id;
-            storageSaveActiveProfileId(activeId);
+            this._storage.saveActiveProfileId(activeId);
         }
         this.profiles = profiles;
         const active = profiles.find(p => p.id === activeId) ?? profiles[0];
         this.activeProfileId = active.id;
-        storageSaveActiveProfileId(this.activeProfileId);
+        this._storage.saveActiveProfileId(this.activeProfileId);
         this.applyProfile(active);
         this.rebuildPipeline();
-        const stats = storageLoadStats(active.id);
+        const stats = this._storage.loadStats(active.id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)
@@ -1599,7 +1669,7 @@ class RewarderService {
             const legacyFeaturedId = profile.featuredPityFeaturedId ?? null;
             const legacyThreshold = profile.featuredPityThreshold ?? 2;
             this.featuredPityEntries = (legacyGroupId && legacyFeaturedId)
-                ? [{ id: generateFeaturedPityEntryId(), threshold: legacyThreshold,
+                ? [{ id: this.generateFeaturedPityEntryId(), threshold: legacyThreshold,
                         groupId: legacyGroupId, featuredId: legacyFeaturedId }]
                 : [];
         }
@@ -1612,15 +1682,22 @@ class RewarderService {
             reward: new Reward(h.rewardId, h.rewardName),
         }));
     }
+    generateProfileId() {
+        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    }
+    generateFeaturedPityEntryId() {
+        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    }
 }
 // ===== App =====
 class RewarderApp {
     constructor() {
-        this.svc = new RewarderService();
         this.isRolling = false;
         // ── Composition root ─────────────────────────────────────────────────────
+        this.svc = new RewarderService(new PipelineFactory(), new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.spinModeFactory = new WheelSpinModeFactory();
         this.calculatorFactory = new WeightedRandomCalculatorFactory();
+        this.rng = new MathRandomNumberGenerator();
     }
     init() {
         this.svc.init();
@@ -1829,7 +1906,7 @@ class RewarderApp {
         this.isRolling = true;
         this.setRollButtonsDisabled(true);
         for (let i = 0; i < count; i++) {
-            const { reward, rollNum } = await this.svc.roll();
+            const { reward, rollNum } = await this.svc.roll(this.rng);
             await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
             this.renderLatestResult(reward, rollNum);
             this.renderStats();

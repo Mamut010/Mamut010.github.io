@@ -96,7 +96,7 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
         id: string,
     ): IRewardTreeNode<Reward> | undefined {
         for (const child of node.children) {
-            if (child.metadata?.["id"] === id) return child;
+            if (child.id === id) return child;
             const found = this._findNodeById(child, id);
             if (found) return found;
         }
@@ -104,7 +104,7 @@ class FeaturedPityInterceptor implements IRewardInterceptor<Reward> {
     }
 
     private _collectLeafIds(node: IRewardTreeNode<Reward>, ids: Set<string>): void {
-        if (node.reward !== undefined) {
+        if (node.reward) {
             ids.add(node.reward.id);
             return;
         }

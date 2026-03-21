@@ -23,13 +23,17 @@ class RewarderService {
     pityInterceptor:           HardPityInterceptor     | null = null;
     stdPityInterceptor:        StandardPityInterceptor  | null = null;
     featuredPityInterceptors:  FeaturedPityInterceptor[]      = [];
-    private rng = new MathRandomNumberGenerator();
+
+    private readonly _pipelineFactory: IPipelineFactory;
+    private readonly _storage: IStorageService;
     private readonly _colorProvider: IRewardColorProvider;
 
     profiles: RewardProfile[] = [];
     activeProfileId = "";
 
-    constructor(colorProvider: IRewardColorProvider = new CyclingColorProvider()) {
+    constructor(pipelineFactory: IPipelineFactory, storage: IStorageService, colorProvider: IRewardColorProvider) {
+        this._pipelineFactory = pipelineFactory;
+        this._storage = storage;
         this._colorProvider = colorProvider;
     }
 
@@ -49,7 +53,7 @@ class RewarderService {
             ? (this.findNode(this.pityTargetId) ?? null)
             : null;
 
-        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = buildPipeline({
+        const { pipeline, pityInterceptor, stdPityInterceptor, featuredPityInterceptors } = this._pipelineFactory.create({
             nodes:               this.rewardNodes,
             pityEnabled:         this.pityEnabled,
             pityThreshold:       this.pityThreshold,
@@ -99,7 +103,7 @@ class RewarderService {
     // ===== Featured Pity Entry CRUD =====
 
     addFeaturedPityEntry(): string {
-        const id = generateFeaturedPityEntryId();
+        const id = this.generateFeaturedPityEntryId();
         this.featuredPityEntries.push({ id, threshold: 2, groupId: null, featuredId: null });
         return id;
     }
@@ -215,8 +219,8 @@ class RewarderService {
 
     // ===== Rolling =====
 
-    async roll(): Promise<{ reward: Reward; rollNum: number }> {
-        const result = await this.pipeline.invoke({ rng: this.rng });
+    async roll(rng: IRandomNumberGenerator): Promise<{ reward: Reward; rollNum: number }> {
+        const result = await this.pipeline.invoke({ rng });
         const reward = result.rewards[0] ?? new Reward("unknown", "Unknown");
         const rollNum = ++this.totalRolls;
         this.rewardCounts.set(reward.id, (this.rewardCounts.get(reward.id) ?? 0) + 1);
@@ -249,7 +253,7 @@ class RewarderService {
             featuredPityEnabled: this.featuredPityEnabled,
             featuredPityEntries: this.featuredPityEntries,
         };
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
 
     saveCurrentStats(): void {
@@ -267,7 +271,7 @@ class RewarderService {
                 this.featuredPityInterceptors.map(i => [i.entryId, i.counter]),
             ),
         };
-        storageSaveStats(this.activeProfileId, stats);
+        this._storage.saveStats(this.activeProfileId, stats);
     }
 
     // Returns true if the active profile was replaced (caller should do a full re-render).
@@ -278,7 +282,7 @@ class RewarderService {
 
         this.saveCurrentStats();
         this.activeProfileId = id;
-        storageSaveActiveProfileId(id);
+        this._storage.saveActiveProfileId(id);
 
         this.totalRolls   = 0;
         this.rewardCounts = new Map();
@@ -287,7 +291,7 @@ class RewarderService {
         this.applyProfile(profile);
         this.rebuildPipeline();
 
-        const stats = storageLoadStats(id);
+        const stats = this._storage.loadStats(id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
@@ -303,7 +307,7 @@ class RewarderService {
         this.saveCurrentStats();
         const num = this.profiles.length + 1;
         const profile: RewardProfile = {
-            id:               generateProfileId(),
+            id:               this.generateProfileId(),
             name:             "Profile " + num,
             nodes:            defaultRewardNodes(),
             pityEnabled:      true,
@@ -317,10 +321,10 @@ class RewarderService {
             featuredPityEntries: [],
         };
         this.profiles.push(profile);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
 
         this.activeProfileId = profile.id;
-        storageSaveActiveProfileId(profile.id);
+        this._storage.saveActiveProfileId(profile.id);
 
         this.totalRolls   = 0;
         this.rewardCounts = new Map();
@@ -336,14 +340,14 @@ class RewarderService {
         const idx = this.profiles.findIndex(p => p.id === id);
         if (idx === -1) return false;
 
-        storageDeleteStats(id);
+        this._storage.deleteStats(id);
         this.profiles.splice(idx, 1);
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
 
         if (this.activeProfileId === id) {
             const next = this.profiles[Math.max(0, idx - 1)];
             this.activeProfileId = next.id;
-            storageSaveActiveProfileId(next.id);
+            this._storage.saveActiveProfileId(next.id);
 
             this.totalRolls   = 0;
             this.rewardCounts = new Map();
@@ -352,14 +356,14 @@ class RewarderService {
             this.applyProfile(next);
             this.rebuildPipeline();
 
-            const stats = storageLoadStats(next.id);
+            const stats = this._storage.loadStats(next.id);
             if (stats) {
                 this.applyStats(stats);
-if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
-            if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
-            for (const i of this.featuredPityInterceptors) {
-                i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
-            }
+                if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
+                if (this.stdPityInterceptor) this.stdPityInterceptor.setCounter(stats.stdPityCounter ?? 0);
+                for (const i of this.featuredPityInterceptors) {
+                    i.setCounter(stats.featuredPityCounters?.[i.entryId] ?? 0);
+                }
             }
             return true;
         }
@@ -370,16 +374,16 @@ if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
         const idx = this.profiles.findIndex(p => p.id === this.activeProfileId);
         if (idx === -1) return;
         this.profiles[idx].name = name || "Profile";
-        storageSaveProfiles(this.profiles);
+        this._storage.saveProfiles(this.profiles);
     }
 
     private loadState(): void {
-        let profiles = storageLoadProfiles();
-        let activeId = storageLoadActiveProfileId();
+        let profiles = this._storage.loadProfiles();
+        let activeId = this._storage.loadActiveProfileId();
 
         if (profiles.length === 0) {
             const firstProfile: RewardProfile = {
-                id:               generateProfileId(),
+                id:               this.generateProfileId(),
                 name:             "Default",
                 nodes:            defaultRewardNodes(),
                 pityEnabled:      true,
@@ -393,20 +397,20 @@ if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
                 featuredPityEntries: [],
             };
             profiles = [firstProfile];
-            storageSaveProfiles(profiles);
+            this._storage.saveProfiles(profiles);
             activeId = firstProfile.id;
-            storageSaveActiveProfileId(activeId);
+            this._storage.saveActiveProfileId(activeId);
         }
 
         this.profiles = profiles;
         const active = profiles.find(p => p.id === activeId) ?? profiles[0];
         this.activeProfileId = active.id;
-        storageSaveActiveProfileId(this.activeProfileId);
+        this._storage.saveActiveProfileId(this.activeProfileId);
 
         this.applyProfile(active);
         this.rebuildPipeline();
 
-        const stats = storageLoadStats(active.id);
+        const stats = this._storage.loadStats(active.id);
         if (stats) {
             this.applyStats(stats);
             if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
@@ -435,7 +439,7 @@ if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
             const legacyFeaturedId = (profile as any).featuredPityFeaturedId ?? null;
             const legacyThreshold  = (profile as any).featuredPityThreshold  ?? 2;
             this.featuredPityEntries = (legacyGroupId && legacyFeaturedId)
-                ? [{ id: generateFeaturedPityEntryId(), threshold: legacyThreshold,
+                ? [{ id: this.generateFeaturedPityEntryId(), threshold: legacyThreshold,
                      groupId: legacyGroupId, featuredId: legacyFeaturedId }]
                 : [];
         }
@@ -448,5 +452,13 @@ if (this.pityInterceptor)    this.pityInterceptor.setCounter(stats.pityCounter);
             rollNum: h.rollNum,
             reward:  new Reward(h.rewardId, h.rewardName),
         }));
+    }
+
+    private generateProfileId(): string {
+        return "profile-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+    }
+
+    private generateFeaturedPityEntryId(): string {
+        return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
     }
 }
