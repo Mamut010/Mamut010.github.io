@@ -714,7 +714,7 @@ class RewarderApp {
         if (toggle) {
             toggle.addEventListener("change", () => {
                 this.svc.featuredPityEnabled = toggle.checked;
-                const display = this.svc.featuredPityEnabled ? "block" : "none";
+                const display = this.svc.featuredPityEnabled ? "" : "none";
                 const addRow  = document.getElementById("feat-pity-add-row");
                 const editor  = document.getElementById("feat-pity-entries-editor");
                 if (editor) editor.style.display = display;
@@ -803,7 +803,7 @@ class RewarderApp {
         const toggle = document.getElementById("feat-pity-toggle") as HTMLInputElement | null;
         if (toggle) toggle.checked = this.svc.featuredPityEnabled;
 
-        const display = this.svc.featuredPityEnabled ? "block" : "none";
+        const display = this.svc.featuredPityEnabled ? "" : "none";
         const addRow  = document.getElementById("feat-pity-add-row");
         const editor  = document.getElementById("feat-pity-entries-editor");
         if (editor) editor.style.display = display;

@@ -585,6 +585,67 @@ function generateProfileId() {
 function generateFeaturedPityEntryId() {
     return "fp-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
 }
+class Point2 {
+    constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+    }
+    distanceTo(other) {
+        const dx = this.x - other.x;
+        const dy = this.y - other.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    setX(x) {
+        if (x === this.x)
+            return this;
+        return new Point2(x, this.y);
+    }
+    setY(y) {
+        if (y === this.y)
+            return this;
+        return new Point2(this.x, y);
+    }
+    setCoords(x, y) {
+        if (x === this.x && y === this.y)
+            return this;
+        return new Point2(x, y);
+    }
+}
+class CircleGeometry {
+    constructor(radius) {
+        this.radius = radius;
+    }
+    setRadius(radius) {
+        if (radius === this.radius)
+            return this;
+        return new CircleGeometry(radius);
+    }
+}
+class Circle {
+    constructor(center, geometry) {
+        this.center = center;
+        this.geometry = geometry;
+    }
+    static fromRadius(center, radius) {
+        return new Circle(center, new CircleGeometry(radius));
+    }
+    static of(x, y, radius) {
+        return Circle.fromRadius(new Point2(x, y), radius);
+    }
+    get x() { return this.center.x; }
+    get y() { return this.center.y; }
+    get r() { return this.geometry.radius; }
+    setCenter(center) {
+        if (center === this.center)
+            return this;
+        return new Circle(center, this.geometry);
+    }
+    setGeometry(geometry) {
+        if (geometry === this.geometry)
+            return this;
+        return new Circle(this.center, geometry);
+    }
+}
 // ===== Wheel Drawer =====
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
 class CanvasWheelDrawer {
@@ -593,80 +654,118 @@ class CanvasWheelDrawer {
         this.ctx = canvas.getContext("2d");
     }
     draw(rotation, segments, segAngles) {
-        const { canvas, ctx } = this;
-        const W = canvas.width;
-        const H = canvas.height;
-        const cx = W / 2;
-        const cy = H / 2;
-        const r = Math.min(cx, cy) * 0.88; // leave room for the pointer above the wheel
-        ctx.clearRect(0, 0, W, H);
+        const wheelShape = this.getWheelShape();
+        this.clearCanvas();
         if (segments.length === 0) {
-            // Empty placeholder ring
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-            ctx.strokeStyle = "#2a2a5a";
-            ctx.lineWidth = Math.max(1, r * 0.015);
-            ctx.stroke();
-            this.drawPointer(cx, cy, r);
+            this.drawEmptyPlaceholder(wheelShape);
             return;
         }
-        const offset = -Math.PI / 2; // rotate so angle 0 points to the top
-        // ── Filled segments ───────────────────────────────────────────────────
+        const offset = CanvasWheelDrawer.BASE_OFFSET + rotation;
+        this.fillSegments(segments, segAngles, offset, wheelShape);
+        this.drawTextLabels(segments, segAngles, offset, wheelShape);
+        this.drawOuterRing(wheelShape);
+        this.drawCenterCap(wheelShape);
+        this.drawPointer(wheelShape);
+    }
+    getWheelShape() {
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const r = Math.min(cx, cy) * 0.88; // leave room for the pointer above the wheel
+        return Circle.of(cx, cy, r);
+    }
+    clearCanvas() {
+        const { canvas, ctx } = this;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    drawEmptyPlaceholder(wheelShape) {
+        const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#2a2a5a";
+        ctx.lineWidth = Math.max(1, r * 0.015);
+        ctx.stroke();
+        this.drawPointer(wheelShape);
+    }
+    fillSegments(segments, segAngles, offset, wheelShape) {
         for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
-            const angles = segAngles[i];
-            const startA = angles.start + rotation + offset;
-            const endA = startA + angles.sweep;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.arc(cx, cy, r, startA, endA);
-            ctx.closePath();
-            ctx.fillStyle = seg.borderColor || "#334155";
-            ctx.fill();
-            // Subtle sheen so dark colours remain distinguishable
-            ctx.fillStyle = "rgba(255,255,255,0.06)";
-            ctx.fill();
-            ctx.strokeStyle = "#0f172a";
-            ctx.lineWidth = Math.max(1, r * 0.011);
-            ctx.stroke();
+            this.fillSegment(segments[i], segAngles[i], offset, wheelShape);
         }
-        // ── Text labels ───────────────────────────────────────────────────────
+    }
+    fillSegment(seg, angles, offset, wheelShape) {
+        const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
+        const startA = angles.start + offset;
+        const endA = startA + angles.sweep;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, startA, endA);
+        ctx.closePath();
+        ctx.fillStyle = seg.borderColor || "#334155";
+        ctx.fill();
+        // Subtle sheen so dark colours remain distinguishable
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.fill();
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = Math.max(1, r * 0.011);
+        ctx.stroke();
+    }
+    drawTextLabels(segments, segAngles, offset, wheelShape) {
         for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
-            const angles = segAngles[i];
-            const midA = angles.mid + rotation + offset;
-            const txtR = r * 0.62;
-            const arcLen = angles.sweep * txtR; // arc length at label radius
-            // Font size adapts to canvas size and available arc length
-            const fontSize = Math.max(r * 0.05, Math.min(r * 0.098, arcLen * 0.45));
-            const maxChars = Math.floor(arcLen / (fontSize * 0.62));
-            if (maxChars < 1)
-                continue;
-            let label = seg.name;
-            if (label.length > maxChars) {
-                label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
-            }
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(midA);
-            ctx.translate(txtR, 0);
-            ctx.font = `bold ${fontSize}px "clear sans", Arial, sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.shadowColor = "rgba(0,0,0,0.8)";
-            ctx.shadowBlur = Math.max(2, r * 0.03);
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(label, 0, 0);
-            ctx.shadowBlur = 0;
-            ctx.restore();
+            this.drawTextLabel(segments[i], segAngles[i], offset, wheelShape);
         }
-        // ── Outer ring ────────────────────────────────────────────────────────
+    }
+    drawTextLabel(seg, angles, offset, wheelShape) {
+        const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
+        const midA = angles.mid + offset;
+        const txtR = r * 0.62;
+        const arcLen = angles.sweep * txtR; // arc length at label radius
+        // Font size adapts to canvas size and available arc length
+        const fontSize = Math.max(r * 0.05, Math.min(r * 0.098, arcLen * 0.45));
+        const maxChars = Math.floor(arcLen / (fontSize * 0.62));
+        if (maxChars < 1)
+            return;
+        let label = seg.name;
+        if (label.length > maxChars) {
+            label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
+        }
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(midA);
+        ctx.translate(txtR, 0);
+        ctx.font = `bold ${fontSize}px "clear sans", Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowBlur = Math.max(2, r * 0.03);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(label, 0, 0);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+    drawOuterRing(wheelShape) {
+        const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, 2 * Math.PI);
         ctx.strokeStyle = "#4a4a8a";
         ctx.lineWidth = Math.max(1, r * 0.023);
         ctx.stroke();
-        // ── Center cap ────────────────────────────────────────────────────────
+    }
+    drawCenterCap(wheelShape) {
+        const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
         const capR = r * 0.10;
         ctx.beginPath();
         ctx.arc(cx, cy, capR, 0, 2 * Math.PI);
@@ -675,10 +774,12 @@ class CanvasWheelDrawer {
         ctx.strokeStyle = "#c084fc";
         ctx.lineWidth = Math.max(1, r * 0.015);
         ctx.stroke();
-        this.drawPointer(cx, cy, r);
     }
-    drawPointer(cx, cy, r) {
+    drawPointer(wheelShape) {
         const ctx = this.ctx;
+        const cx = wheelShape.x;
+        const cy = wheelShape.y;
+        const r = wheelShape.r;
         const ph = Math.max(8, r * 0.098); // pointer height
         const pw = Math.max(5, r * 0.068); // pointer half-width
         const tipY = cy - r - Math.max(1, r * 0.015); // tip just above the outer ring
@@ -695,6 +796,7 @@ class CanvasWheelDrawer {
         ctx.shadowBlur = 0;
     }
 }
+CanvasWheelDrawer.BASE_OFFSET = -Math.PI / 2; // rotate so angle 0 points to the top
 // ===== Wheel Spin Animator =====
 /**
  * Unified single-pass animator.
@@ -2191,7 +2293,7 @@ class RewarderApp {
         if (toggle) {
             toggle.addEventListener("change", () => {
                 this.svc.featuredPityEnabled = toggle.checked;
-                const display = this.svc.featuredPityEnabled ? "block" : "none";
+                const display = this.svc.featuredPityEnabled ? "" : "none";
                 const addRow = document.getElementById("feat-pity-add-row");
                 const editor = document.getElementById("feat-pity-entries-editor");
                 if (editor)
@@ -2278,7 +2380,7 @@ class RewarderApp {
         const toggle = document.getElementById("feat-pity-toggle");
         if (toggle)
             toggle.checked = this.svc.featuredPityEnabled;
-        const display = this.svc.featuredPityEnabled ? "block" : "none";
+        const display = this.svc.featuredPityEnabled ? "" : "none";
         const addRow = document.getElementById("feat-pity-add-row");
         const editor = document.getElementById("feat-pity-entries-editor");
         if (editor)

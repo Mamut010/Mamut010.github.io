@@ -592,7 +592,8 @@ details[open] > .config-group-header .config-group-chevron {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-top: 8px;
+    margin-top: 1em;
+    margin-bottom: 1em;
 }
 
 .profile-name-label {
