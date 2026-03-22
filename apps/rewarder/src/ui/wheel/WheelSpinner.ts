@@ -5,18 +5,18 @@
  * concrete `SpinAnimationParams` and delegates execution to `ISpinningWheelAnimator`.
  * Owns the wheel-level timing constants and the minimum-rotations rule.
  */
-interface IWheelSpinner {
+interface IWheelSpinner<T> {
     spin(
         targetIndex: number,
         context:     SpinContext,
-        segments:    WheelSegment[],
+        segments:    WheelSegment<T>[],
         onFrame:     () => void,
     ): Promise<void>;
     accelerate(): void;
     skip():       void;
 }
 
-class DefaultWheelSpinner implements IWheelSpinner {
+class DefaultWheelSpinner<T> implements IWheelSpinner<T> {
     // ── Timing defaults ────────────────────────────────────────────────────────
     private static readonly NORMAL_DURATION = 4000;   // ms for a full normal spin
     private static readonly ACCEL_CAP_MS   = 900;     // max remaining ms after accelerate()
@@ -25,13 +25,13 @@ class DefaultWheelSpinner implements IWheelSpinner {
 
     constructor(
         private readonly animator:          ISpinningWheelAnimator,
-        private readonly calculatorFactory: ISpinningAngleCalculatorFactory,
+        private readonly calculatorFactory: ISpinningAngleCalculatorFactory<T>,
     ) {}
 
     spin(
         targetIndex: number,
         context:     SpinContext,
-        segments:    WheelSegment[],
+        segments:    WheelSegment<T>[],
         onFrame:     () => void,
     ): Promise<void> {
         const TAU        = Maths.TAU;

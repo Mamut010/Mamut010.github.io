@@ -84,10 +84,10 @@ class UniformSegmentAngleCalculator implements ISegmentAngleCalculator {
 }
 
 class SegmentAngleCalculatorFactory implements ISegmentAngleCalculatorFactory {
-    private static readonly CACHE = new Map<SegmentAngleStrategy, ISegmentAngleCalculator>();
+    private readonly _cache = new Map<SegmentAngleStrategy, ISegmentAngleCalculator>();
 
     create(strategy: SegmentAngleStrategy): ISegmentAngleCalculator {
-        let calculator = SegmentAngleCalculatorFactory.CACHE.get(strategy);
+        let calculator = this._cache.get(strategy);
         if (calculator) {
             return calculator;
         }
@@ -103,7 +103,7 @@ class SegmentAngleCalculatorFactory implements ISegmentAngleCalculatorFactory {
                 throw new Error(`Unknown SegmentAngleStrategy: ${strategy}`);
         }
 
-        SegmentAngleCalculatorFactory.CACHE.set(strategy, calculator);
+        this._cache.set(strategy, calculator);
         return calculator;
     }
 }

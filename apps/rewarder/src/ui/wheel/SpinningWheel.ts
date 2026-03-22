@@ -6,17 +6,17 @@
  * the three subcomponents together, but delegates all drawing, animation, and
  * spin-target computation to them.
  */
-class SpinningWheel {
-    private segments:  WheelSegment[]  = [];
+class SpinningWheel<T> {
+    private _segments:  WheelSegment<T>[]  = [];
 
-    private readonly drawer:   ISpinningWheelDrawer;
+    private readonly drawer:   ISpinningWheelDrawer<T>;
     private readonly animator: ISpinningWheelAnimator;
-    private readonly spinner:  IWheelSpinner;
+    private readonly spinner:  IWheelSpinner<T>;
 
     constructor(
-        drawer:   ISpinningWheelDrawer,
+        drawer:   ISpinningWheelDrawer<T>,
         animator: ISpinningWheelAnimator,
-        spinner:  IWheelSpinner,
+        spinner:  IWheelSpinner<T>,
     ) {
         this.drawer   = drawer;
         this.animator = animator;
@@ -26,18 +26,17 @@ class SpinningWheel {
 
     // ===== Public API =====
 
-    setSegments(segments: WheelSegment[]): void {
-        this.segments  = segments;
+    get segments(): readonly WheelSegment<T>[] {
+        return this._segments;
+    }
+
+    setSegments(segments: WheelSegment<T>[]): void {
+        this._segments  = segments;
         if (!this.animator.isSpinning) this.redraw();
     }
 
-    findSegmentIndex(rewardId: string): number {
-        const idx = this.segments.findIndex(s => s.id === rewardId);
-        return idx >= 0 ? idx : 0;
-    }
-
     spin(targetIndex: number, context: SpinContext): Promise<void> {
-        return this.spinner.spin(targetIndex, context, this.segments, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this._segments, () => this.redraw());
     }
 
     accelerate(): void { this.spinner.accelerate(); }
@@ -46,6 +45,6 @@ class SpinningWheel {
     // ===== Helpers =====
 
     private redraw(): void {
-        this.drawer.draw(this.animator.currentRotation, this.segments);
+        this.drawer.draw(this.animator.currentRotation, this._segments);
     }
 }

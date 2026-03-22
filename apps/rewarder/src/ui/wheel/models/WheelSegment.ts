@@ -1,11 +1,8 @@
-class WheelSegment {
+class WheelSegment<T> {
     constructor(
-        public readonly id: string,
-        public name:        string,
-        public color:       string,
-        public borderColor: string,
-        public weight:      number,
-        public angle:       WheelSegmentAngle,
+        public data:    T,
+        public weight:  number,
+        public angle:   WheelSegmentAngle,
     ) { }
 }
 

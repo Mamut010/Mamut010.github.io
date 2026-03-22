@@ -19,35 +19,35 @@ interface SpinLandingResult {
     correctionDelta?: number;
 }
 
-class SpinCalculationContext {
+class SpinCalculationContext<T> {
     constructor(
         public readonly targetIndex: number,
-        public readonly segments:    WheelSegment[],
+        public readonly segments:    WheelSegment<T>[],
     ) {}
 
-    get targetSegment(): WheelSegment {
+    get targetSegment(): WheelSegment<T> {
         return this.segments[this.targetIndex];
     }
 }
 
-interface ISpinningAngleCalculator {
+interface ISpinningAngleCalculator<T> {
     /**
      * Determine the precise landing position for this spin.
      * @param ctx Full wheel geometry and the index of the winning segment.
      */
-    calculate(ctx: SpinCalculationContext): SpinLandingResult;
+    calculate(ctx: SpinCalculationContext<T>): SpinLandingResult;
 }
 
-interface ISpinningAngleCalculatorFactory {
+interface ISpinningAngleCalculatorFactory<T> {
     /** Decide which calculator to use given the current spinning context. */
-    create(ctx: SpinContext): ISpinningAngleCalculator;
+    create(ctx: SpinContext): ISpinningAngleCalculator<T>;
 }
 
 // ── Concrete calculators ──────────────────────────────────────────────────────
 
 /** Lands at a uniformly random position within the inner 95% of the segment — single phase. */
-class NaturalAngleCalculator implements ISpinningAngleCalculator {
-    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+class NaturalAngleCalculator<T> implements ISpinningAngleCalculator<T> {
+    calculate(ctx: SpinCalculationContext<T>): SpinLandingResult {
         const angle        = ctx.targetSegment.angle;
         const margin       = angle.sweep * 0.025;  // avoid landing too close to edges where visual glitches are more likely
         const landingAngle = angle.start + margin + Math.random() * (angle.sweep - 2 * margin);
@@ -63,8 +63,8 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
  * make that cross the trailing edge (start) by a small gap so the pointer
  * briefly visits the neighbouring segment before returning.
  */
-class OvershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+class OvershootAngleCalculator<T> implements ISpinningAngleCalculator<T> {
+    calculate(ctx: SpinCalculationContext<T>): SpinLandingResult {
         const angle = ctx.targetSegment.angle;
         // Landing sits close to the trailing edge (start) so the correction
         // needed to cross it is as small as possible.
@@ -88,8 +88,8 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
  * landingAngle + |correctionDelta|, which crosses the leading edge
  * (start + sweep) so the pointer briefly sits in the preceding segment.
  */
-class UndershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+class UndershootAngleCalculator<T> implements ISpinningAngleCalculator<T> {
+    calculate(ctx: SpinCalculationContext<T>): SpinLandingResult {
         const angle = ctx.targetSegment.angle;
         // Landing sits close to the leading edge (start + sweep).
         const distFromLeading = Math.min(angle.sweep * (0.10 + Math.random() * 0.10), 0.08);
@@ -112,43 +112,46 @@ class UndershootAngleCalculator implements ISpinningAngleCalculator {
  * - accelerate mode: mostly Natural, occasional Overshoot.
  * - normal mode: mix of all three for varied feel.
  */
-class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory {
-    private static readonly CACHE = new Map<Class<ISpinningAngleCalculator>, ISpinningAngleCalculator>();
+class WeightedRandomCalculatorFactory<T> implements ISpinningAngleCalculatorFactory<T> {
+    private readonly _cache = new Map<
+        Class<ISpinningAngleCalculator<T>>,
+        ISpinningAngleCalculator<T>
+        >();
 
-    private static readonly NORMAL_POOL: [Class<ISpinningAngleCalculator>, number][] = [
-        [NaturalAngleCalculator,    96],
-        [OvershootAngleCalculator,  2],
-        [UndershootAngleCalculator, 2],
+    private readonly _normalPool: [Class<ISpinningAngleCalculator<T>>, number][] = [
+        [NaturalAngleCalculator<T>,    96],
+        [OvershootAngleCalculator<T>,  2],
+        [UndershootAngleCalculator<T>, 2],
     ];
 
-    private static readonly ACCEL_POOL: [Class<ISpinningAngleCalculator>, number][] = [
-        [NaturalAngleCalculator,   95],
-        [OvershootAngleCalculator, 5],
+    private readonly _accelPool: [Class<ISpinningAngleCalculator<T>>, number][] = [
+        [NaturalAngleCalculator<T>,   95],
+        [OvershootAngleCalculator<T>, 5],
     ];
 
-    private static readonly NATURAL_ONLY = NaturalAngleCalculator;
+    private readonly _naturalOnly = NaturalAngleCalculator<T>;
 
-    create(context: SpinContext): ISpinningAngleCalculator {
+    create(context: SpinContext): ISpinningAngleCalculator<T> {
         const cls = this.getClass(context);
         const calculator = this.getOrCreate(cls);
         return calculator;
     }
 
-    private getClass(context: SpinContext): Class<ISpinningAngleCalculator> {
+    private getClass(context: SpinContext): Class<ISpinningAngleCalculator<T>> {
         if (context.modeId === WheelSpinStrategyCode.Skip)
-            return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+            return this._naturalOnly;
 
         const pool = context.modeId === WheelSpinStrategyCode.Accelerate
-            ? WeightedRandomCalculatorFactory.ACCEL_POOL
-            : WeightedRandomCalculatorFactory.NORMAL_POOL;
+            ? this._accelPool
+            : this._normalPool;
 
         const items   = pool.map(([calc]) => calc);
         const weights = pool.map(([, w])  => w);
-        return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        return Randoms.nextItemWeighted(items, weights) ?? this._naturalOnly;
     }
 
-    private getOrCreate(cls: Class<ISpinningAngleCalculator>): ISpinningAngleCalculator {
-        let calculator = WeightedRandomCalculatorFactory.CACHE.get(cls);
+    private getOrCreate(cls: Class<ISpinningAngleCalculator<T>>): ISpinningAngleCalculator<T> {
+        let calculator = this._cache.get(cls);
         if (calculator) {
             return calculator;
         }
@@ -167,7 +170,7 @@ class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory
                 throw new Error(`Unknown calculator class: ${cls.name}`);
         }
 
-        WeightedRandomCalculatorFactory.CACHE.set(cls, calculator);
+        this._cache.set(cls, calculator);
         return calculator;
     }
 }
