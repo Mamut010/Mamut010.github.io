@@ -2,7 +2,7 @@
 
 interface ISpinningWheelDrawer<T> {
     /** Render the wheel at the given rotation with the given geometry. */
-    draw(rotation: number, segments: WheelSegment<T>[]): void;
+    draw(rotation: number, segments: readonly WheelSegment<T>[]): void;
 }
 
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
@@ -17,7 +17,7 @@ class CanvasRewardNodeWheelDrawer implements ISpinningWheelDrawer<RewardNodeConf
         this.ctx    = canvas.getContext("2d")!;
     }
 
-    draw(rotation: number, segments: WheelSegment<RewardNodeConfig>[]): void {
+    draw(rotation: number, segments: readonly WheelSegment<RewardNodeConfig>[]): void {
         const wheelShape = this.getWheelShape();
 
         this.clearCanvas();
@@ -62,7 +62,7 @@ class CanvasRewardNodeWheelDrawer implements ISpinningWheelDrawer<RewardNodeConf
         this.drawPointer(wheelShape);
     }
 
-    private fillSegments(segments: WheelSegment<RewardNodeConfig>[], offset: number, wheelShape: Circle): void {
+    private fillSegments(segments: readonly WheelSegment<RewardNodeConfig>[], offset: number, wheelShape: Circle): void {
         for (let i = 0; i < segments.length; i++) {
             this.fillSegment(segments[i], offset, wheelShape);
         }
@@ -102,7 +102,11 @@ class CanvasRewardNodeWheelDrawer implements ISpinningWheelDrawer<RewardNodeConf
         ctx.stroke();
     }
 
-    private drawTextLabels(segments: WheelSegment<RewardNodeConfig>[], offset: number, wheelShape: Circle): void {
+    private drawTextLabels(
+        segments: readonly WheelSegment<RewardNodeConfig>[],
+        offset: number,
+        wheelShape: Circle
+    ): void {
         for (let i = 0; i < segments.length; i++) {
             this.drawTextLabel(segments[i], offset, wheelShape);
         }

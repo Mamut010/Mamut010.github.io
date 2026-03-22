@@ -123,25 +123,6 @@ class Maths {
     static lte(a, b, epsilon = Maths.EPSILON) {
         return a < b || Maths.eq(a, b, epsilon);
     }
-}
-/**
- * The mathematical constant τ (tau), equal to 2π, representing a full circle in radians.
- */
-Maths.TAU = 2 * Math.PI;
-/**
- * The golden ratio φ (phi), approximately 1.61803398875.
- */
-Maths.PHI = (1 + Math.sqrt(5)) / 2;
-/**
- * The smallest positive number such that 1 + EPSILON !== 1, used to determine the precision of floating-point calculations and to avoid issues with rounding errors in comparisons.
- */
-Maths.EPSILON = Number.EPSILON;
-/**
- * A right angle, equal to τ/4 (π/2) radians or 90 degrees, representing a quarter of a full circle.
- */
-Maths.RIGHT_ANGLE = Math.PI / 2;
-class Animations {
-    constructor() { }
     /**
      * Linearly interpolate between two numbers based on a parameter t in the range [0, 1]
      * @param start The starting value (corresponding to t=0)
@@ -177,6 +158,25 @@ class Animations {
         const t = Maths.clamp((x - edge0) / (edge1 - edge0), 0, 1);
         return t * t * t * (t * (t * 6 - 15) + 10);
     }
+}
+/**
+ * The mathematical constant τ (tau), equal to 2π, representing a full circle in radians.
+ */
+Maths.TAU = 2 * Math.PI;
+/**
+ * The golden ratio φ (phi), approximately 1.61803398875.
+ */
+Maths.PHI = (1 + Math.sqrt(5)) / 2;
+/**
+ * The smallest positive number such that 1 + EPSILON !== 1, used to determine the precision of floating-point calculations and to avoid issues with rounding errors in comparisons.
+ */
+Maths.EPSILON = Number.EPSILON;
+/**
+ * A right angle, equal to τ/4 (π/2) radians or 90 degrees, representing a quarter of a full circle.
+ */
+Maths.RIGHT_ANGLE = Math.PI / 2;
+class Animations {
+    constructor() { }
     /**
      * Ease-in quart function that provides a smooth acceleration curve, starting slow and speeding up towards the end, creating a natural motion effect in animations.
      * @param t The interpolation parameter, typically in the range [0, 1], where 0 represents the start and 1 represents the end
@@ -1263,9 +1263,9 @@ class TwoPhaseWheelAnimator {
         if (this.overshootTarget == null)
             return basePos;
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = Animations.smootherstep(this.blendStart, 1, t);
+        const blend = Maths.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
-        return Animations.lerp(basePos, this.finalRotation, blend);
+        return Maths.lerp(basePos, this.finalRotation, blend);
     }
     finishSpin() {
         this.currentRotation = this.finalRotation;
@@ -1279,38 +1279,26 @@ class TwoPhaseWheelAnimator {
     }
 }
 // ===== Wheel Spin Mode (Strategy Pattern) =====
-const WheelSpinStrategyCode = {
+const WheelSpinStrategyMode = {
     Normal: "normal",
     Accelerate: "accelerate",
     Skip: "skip",
 };
 class NormalSpinStrategy {
-    constructor() {
-        this.id = WheelSpinStrategyCode.Normal;
-        this.label = "Normal";
-    }
     execute(wheel, targetIndex) {
-        return wheel.spin(targetIndex, { modeId: this.id });
+        return wheel.spin(targetIndex, WheelSpinStrategyMode.Normal);
     }
 }
 class AccelerateSpinStrategy {
-    constructor() {
-        this.id = WheelSpinStrategyCode.Accelerate;
-        this.label = "Fast";
-    }
     execute(wheel, targetIndex) {
-        const p = wheel.spin(targetIndex, { modeId: this.id });
+        const p = wheel.spin(targetIndex, WheelSpinStrategyMode.Accelerate);
         wheel.accelerate();
         return p;
     }
 }
 class SkipSpinStrategy {
-    constructor() {
-        this.id = WheelSpinStrategyCode.Skip;
-        this.label = "Skip";
-    }
     execute(wheel, targetIndex) {
-        const p = wheel.spin(targetIndex, { modeId: this.id });
+        const p = wheel.spin(targetIndex, WheelSpinStrategyMode.Skip);
         wheel.skip();
         return p;
     }
@@ -1318,19 +1306,16 @@ class SkipSpinStrategy {
 class WheelSpinModeFactory {
     constructor() {
         this.registry = new Map([
-            [WheelSpinStrategyCode.Normal, new NormalSpinStrategy()],
-            [WheelSpinStrategyCode.Accelerate, new AccelerateSpinStrategy()],
-            [WheelSpinStrategyCode.Skip, new SkipSpinStrategy()],
+            [WheelSpinStrategyMode.Normal, new NormalSpinStrategy()],
+            [WheelSpinStrategyMode.Accelerate, new AccelerateSpinStrategy()],
+            [WheelSpinStrategyMode.Skip, new SkipSpinStrategy()],
         ]);
     }
-    create(id) {
-        const strategy = this.registry.get(id);
+    create(mode) {
+        const strategy = this.registry.get(mode);
         if (!strategy)
-            throw new Error(`Unknown spin mode: ${id}`);
+            throw new Error(`Unknown spin mode: ${mode}`);
         return strategy;
-    }
-    allModes() {
-        return [...this.registry.values()];
     }
 }
 const SegmentAngleStrategy = {
@@ -1500,7 +1485,7 @@ class UndershootAngleCalculator {
  * - accelerate mode: mostly Natural, occasional Overshoot.
  * - normal mode: mix of all three for varied feel.
  */
-class WeightedRandomCalculatorFactory {
+class WeightedRandomAngleCalculatorFactory {
     constructor() {
         this._cache = new Map();
         this._normalPool = [
@@ -1520,9 +1505,9 @@ class WeightedRandomCalculatorFactory {
         return calculator;
     }
     getClass(context) {
-        if (context.modeId === WheelSpinStrategyCode.Skip)
+        if (context.modeId === WheelSpinStrategyMode.Skip)
             return this._naturalOnly;
-        const pool = context.modeId === WheelSpinStrategyCode.Accelerate
+        const pool = context.modeId === WheelSpinStrategyMode.Accelerate
             ? this._accelPool
             : this._normalPool;
         const items = pool.map(([calc]) => calc);
@@ -1557,10 +1542,10 @@ class DefaultWheelSpinner {
         this.animator = animator;
         this.calculatorFactory = calculatorFactory;
     }
-    spin(targetIndex, context, segments, onFrame) {
+    spin(targetIndex, context, onFrame) {
         const TAU = Maths.TAU;
         const calculator = this.calculatorFactory.create(context);
-        const landing = calculator.calculate(new SpinCalculationContext(targetIndex, segments));
+        const landing = calculator.calculate(new SpinCalculationContext(targetIndex, context.segments));
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
         const targetRot = Maths.normalizeAngle(-landing.landingAngle);
@@ -1611,8 +1596,9 @@ class SpinningWheel {
         if (!this.animator.isSpinning)
             this.redraw();
     }
-    spin(targetIndex, context) {
-        return this.spinner.spin(targetIndex, context, this._segments, () => this.redraw());
+    spin(targetIndex, mode) {
+        const context = { modeId: mode, segments: this._segments };
+        return this.spinner.spin(targetIndex, context, () => this.redraw());
     }
     accelerate() { this.spinner.accelerate(); }
     skip() { this.spinner.skip(); }
@@ -2054,12 +2040,12 @@ class RewarderApp {
         // ── Composition root ─────────────────────────────────────────────────────
         this.svc = new RewarderService(new SegmentAngleCalculatorFactory(), new PipelineFactory(), new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.spinModeFactory = new WheelSpinModeFactory();
-        this.calculatorFactory = new WeightedRandomCalculatorFactory();
+        this.calculatorFactory = new WeightedRandomAngleCalculatorFactory();
         this.rng = new MathRandomNumberGenerator();
     }
     init() {
         this.svc.init();
-        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
+        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyMode.Normal);
         const canvas = document.getElementById("wheel-canvas");
         const drawer = new CanvasRewardNodeWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();

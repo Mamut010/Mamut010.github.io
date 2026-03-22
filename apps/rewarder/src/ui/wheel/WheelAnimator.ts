@@ -152,9 +152,9 @@ class TwoPhaseWheelAnimator implements ISpinningWheelAnimator {
         if (this.overshootTarget == null) return basePos;
 
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = Animations.smootherstep(this.blendStart, 1, t);
+        const blend = Maths.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
-        return Animations.lerp(basePos, this.finalRotation, blend);
+        return Maths.lerp(basePos, this.finalRotation, blend);
     }
 
     private finishSpin(): void {

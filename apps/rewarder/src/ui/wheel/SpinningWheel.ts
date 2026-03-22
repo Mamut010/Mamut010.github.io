@@ -1,13 +1,21 @@
 // ===== Spinning Wheel (Orchestrator) =====
 
+interface ISpinningWheel<T> {
+    segments: readonly WheelSegment<T>[];
+    setSegments(segments: readonly WheelSegment<T>[]): void;
+    spin(targetIndex: number, mode: WheelSpinStrategyMode): Promise<void>;
+    accelerate(): void;
+    skip():       void;
+}
+
 /**
  * Orchestrates the drawer, animator, and spinner to present a complete
  * spinning-wheel widget.  This class owns the segment data model and wires
  * the three subcomponents together, but delegates all drawing, animation, and
  * spin-target computation to them.
  */
-class SpinningWheel<T> {
-    private _segments:  WheelSegment<T>[]  = [];
+class SpinningWheel<T> implements ISpinningWheel<T> {
+    private _segments:  readonly WheelSegment<T>[]  = [];
 
     private readonly drawer:   ISpinningWheelDrawer<T>;
     private readonly animator: ISpinningWheelAnimator;
@@ -30,13 +38,14 @@ class SpinningWheel<T> {
         return this._segments;
     }
 
-    setSegments(segments: WheelSegment<T>[]): void {
+    setSegments(segments: readonly WheelSegment<T>[]): void {
         this._segments  = segments;
         if (!this.animator.isSpinning) this.redraw();
     }
 
-    spin(targetIndex: number, context: SpinContext): Promise<void> {
-        return this.spinner.spin(targetIndex, context, this._segments, () => this.redraw());
+    spin(targetIndex: number, mode: WheelSpinStrategyMode): Promise<void> {
+        const context: SpinContext<T> = { modeId: mode, segments: this._segments };
+        return this.spinner.spin(targetIndex, context, () => this.redraw());
     }
 
     accelerate(): void { this.spinner.accelerate(); }
