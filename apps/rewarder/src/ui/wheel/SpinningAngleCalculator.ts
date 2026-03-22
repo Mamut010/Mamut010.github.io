@@ -112,19 +112,30 @@ class UndershootAngleCalculator implements ISpinningAngleCalculator {
  * - normal mode: mix of all three for varied feel.
  */
 class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory {
-    private static readonly NORMAL_POOL: [ISpinningAngleCalculator, number][] = [
-        [new NaturalAngleCalculator(),    0],
-        [new OvershootAngleCalculator(),  5],
-        [new UndershootAngleCalculator(), 5],
+    private static readonly CACHE = new Map<Class<ISpinningAngleCalculator>, ISpinningAngleCalculator>();
+
+    private static readonly NORMAL_POOL: [Class<ISpinningAngleCalculator>, number][] = [
+        [NaturalAngleCalculator,    96],
+        [OvershootAngleCalculator,  2],
+        [UndershootAngleCalculator, 2],
     ];
-    private static readonly ACCEL_POOL: [ISpinningAngleCalculator, number][] = [
-        [new NaturalAngleCalculator(),   95],
-        [new OvershootAngleCalculator(), 5],
+
+    private static readonly ACCEL_POOL: [Class<ISpinningAngleCalculator>, number][] = [
+        [NaturalAngleCalculator,   95],
+        [OvershootAngleCalculator, 5],
     ];
-    private static readonly NATURAL_ONLY = new NaturalAngleCalculator();
+
+    private static readonly NATURAL_ONLY = NaturalAngleCalculator;
 
     create(context: SpinContext): ISpinningAngleCalculator {
-        if (context.modeId === WheelSpinStrategyCode.Skip) return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        const cls = this.getClass(context);
+        const calculator = this.getOrCreate(cls);
+        return calculator;
+    }
+
+    private getClass(context: SpinContext): Class<ISpinningAngleCalculator> {
+        if (context.modeId === WheelSpinStrategyCode.Skip)
+            return WeightedRandomCalculatorFactory.NATURAL_ONLY;
 
         const pool = context.modeId === WheelSpinStrategyCode.Accelerate
             ? WeightedRandomCalculatorFactory.ACCEL_POOL
@@ -133,5 +144,29 @@ class WeightedRandomCalculatorFactory implements ISpinningAngleCalculatorFactory
         const items   = pool.map(([calc]) => calc);
         const weights = pool.map(([, w])  => w);
         return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+    }
+
+    private getOrCreate(cls: Class<ISpinningAngleCalculator>): ISpinningAngleCalculator {
+        let calculator = WeightedRandomCalculatorFactory.CACHE.get(cls);
+        if (calculator) {
+            return calculator;
+        }
+
+        switch (cls) {
+            case NaturalAngleCalculator:
+                calculator = new NaturalAngleCalculator();
+                break;
+            case OvershootAngleCalculator:
+                calculator = new OvershootAngleCalculator();
+                break;
+            case UndershootAngleCalculator:
+                calculator = new UndershootAngleCalculator();
+                break;
+            default:
+                throw new Error(`Unknown calculator class: ${cls.name}`);
+        }
+
+        WeightedRandomCalculatorFactory.CACHE.set(cls, calculator);
+        return calculator;
     }
 }

@@ -24,10 +24,11 @@ class RewarderApp {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
+        const angleCalculatorFactory = new SegmentAngleCalculatorFactory();
         const drawer   = new CanvasWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
         const spinner  = new DefaultWheelSpinner(animator, this.calculatorFactory);
-        this.wheel = new SpinningWheel(drawer, animator, spinner);
+        this.wheel = new SpinningWheel(angleCalculatorFactory, drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -530,7 +531,7 @@ class RewarderApp {
             borderColor: leaf.borderColor,
             weight:      this.effectiveWeight(leaf.id),
         }));
-        this.wheel.setSegments(segments);
+        this.wheel.setSegments(segments, this.svc.segmentAngleStrategy);
     }
 
     private effectiveWeight(

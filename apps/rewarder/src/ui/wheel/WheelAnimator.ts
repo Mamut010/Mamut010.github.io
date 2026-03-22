@@ -147,14 +147,14 @@ class TwoPhaseWheelAnimator implements ISpinningWheelAnimator {
      */
     private computePosition(t: number): number {
         const baseTarget = this.overshootTarget ?? this.finalRotation;
-        const basePos    = this.spinFromRotation + Maths.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        const basePos    = this.spinFromRotation + Animations.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
 
         if (this.overshootTarget == null) return basePos;
 
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = Maths.smootherstep(this.blendStart, 1, t);
+        const blend = Animations.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
-        return basePos + blend * (this.finalRotation - basePos);
+        return Animations.lerp(basePos, this.finalRotation, blend);
     }
 
     private finishSpin(): void {

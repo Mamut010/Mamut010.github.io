@@ -5,7 +5,7 @@ const WheelSpinStrategyCode = {
     Accelerate: "accelerate",
     Skip: "skip",
 } as const;
-type WheelSpinStrategyCode = typeof WheelSpinStrategyCode[keyof typeof WheelSpinStrategyCode];
+type WheelSpinStrategyCode = ValueOf<typeof WheelSpinStrategyCode>;
 
 interface IWheelSpinStrategy {
     readonly id:    WheelSpinStrategyCode;

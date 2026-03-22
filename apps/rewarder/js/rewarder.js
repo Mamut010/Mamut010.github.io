@@ -123,6 +123,25 @@ class Maths {
     static lte(a, b, epsilon = Maths.EPSILON) {
         return a < b || Maths.eq(a, b, epsilon);
     }
+}
+/**
+ * The mathematical constant τ (tau), equal to 2π, representing a full circle in radians.
+ */
+Maths.TAU = 2 * Math.PI;
+/**
+ * The golden ratio φ (phi), approximately 1.61803398875.
+ */
+Maths.PHI = (1 + Math.sqrt(5)) / 2;
+/**
+ * The smallest positive number such that 1 + EPSILON !== 1, used to determine the precision of floating-point calculations and to avoid issues with rounding errors in comparisons.
+ */
+Maths.EPSILON = Number.EPSILON;
+/**
+ * A right angle, equal to τ/4 (π/2) radians or 90 degrees, representing a quarter of a full circle.
+ */
+Maths.RIGHT_ANGLE = Math.PI / 2;
+class Animations {
+    constructor() { }
     /**
      * Linearly interpolate between two numbers based on a parameter t in the range [0, 1]
      * @param start The starting value (corresponding to t=0)
@@ -235,22 +254,6 @@ class Maths {
             : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
     }
 }
-/**
- * The mathematical constant τ (tau), equal to 2π, representing a full circle in radians.
- */
-Maths.TAU = 2 * Math.PI;
-/**
- * The golden ratio φ (phi), approximately 1.61803398875.
- */
-Maths.PHI = (1 + Math.sqrt(5)) / 2;
-/**
- * The smallest positive number such that 1 + EPSILON !== 1, used to determine the precision of floating-point calculations and to avoid issues with rounding errors in comparisons.
- */
-Maths.EPSILON = Number.EPSILON;
-/**
- * A right angle, equal to τ/4 (π/2) radians or 90 degrees, representing a quarter of a full circle.
- */
-Maths.RIGHT_ANGLE = Math.PI / 2;
 class Randoms {
     constructor() { }
     static nextInt(min, max, rng = Math.random) {
@@ -1239,13 +1242,13 @@ class TwoPhaseWheelAnimator {
      */
     computePosition(t) {
         const baseTarget = this.overshootTarget ?? this.finalRotation;
-        const basePos = this.spinFromRotation + Maths.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
+        const basePos = this.spinFromRotation + Animations.easeOutQuart(t) * (baseTarget - this.spinFromRotation);
         if (this.overshootTarget == null)
             return basePos;
         // Blend weight: 0 before blendStart, smooth 0→1 between blendStart and 1.
-        const blend = Maths.smootherstep(this.blendStart, 1, t);
+        const blend = Animations.smootherstep(this.blendStart, 1, t);
         // Lerp between base (which drifts past/short of final) and exact final.
-        return basePos + blend * (this.finalRotation - basePos);
+        return Animations.lerp(basePos, this.finalRotation, blend);
     }
     finishSpin() {
         this.currentRotation = this.finalRotation;
@@ -1313,6 +1316,91 @@ class WheelSpinModeFactory {
         return [...this.registry.values()];
     }
 }
+const SegmentAngleStrategy = {
+    Uniform: 'uniform',
+    WeightBased: 'weight-based'
+};
+/**
+ * Calculates segment angles based on their weights, with a minimum visual fraction to ensure small segments remain visible.
+ * This is the default and recommended angle calculator for general use.
+ */
+class WeightBasedSegmentAngleCalculator {
+    calculate(segments) {
+        if (segments.length === 0)
+            return [];
+        const total = segments.reduce((s, seg) => s + seg.weight, 0) || 1;
+        // Compute visual fractions with a minimum floor so tiny segments stay visible.
+        // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
+        // Iterate until stable (convergence typically takes 1-2 passes).
+        const frac = segments.map(s => s.weight / total);
+        const MIN = WeightBasedSegmentAngleCalculator.MIN_SEG_FRAC;
+        for (let iter = 0; iter < 8; iter++) {
+            const smallIdx = frac.reduce((acc, f, i) => { if (f < MIN)
+                acc.push(i); return acc; }, []);
+            if (smallIdx.length === 0)
+                break;
+            const reserved = smallIdx.length * MIN;
+            if (reserved >= 1) {
+                frac.fill(1 / segments.length);
+                break;
+            } // pathological: equal split
+            const largeTotal = frac.reduce((s, f, i) => s + (frac[i] < MIN ? 0 : f), 0);
+            const scale = (1 - reserved) / largeTotal;
+            for (let i = 0; i < frac.length; i++) {
+                frac[i] = frac[i] < MIN ? MIN : frac[i] * scale;
+            }
+        }
+        const result = [];
+        let cum = 0;
+        for (let i = 0; i < segments.length; i++) {
+            const start = cum * Maths.TAU;
+            const sweep = frac[i] * Maths.TAU;
+            result.push({ start, mid: start + sweep / 2, sweep });
+            cum += frac[i];
+        }
+        return result;
+    }
+}
+WeightBasedSegmentAngleCalculator.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10°)
+/**
+ * Calculates segment angles by splitting the wheel into equal parts, ignoring weights.
+ * This is simpler and may be preferable for small wheels with similar weights, but generally less visually informative than the weight-based calculator.
+ */
+class UniformSegmentAngleCalculator {
+    calculate(segments) {
+        const count = segments.length;
+        if (count === 0)
+            return [];
+        const sweep = Maths.TAU / count;
+        const result = [];
+        for (let i = 0; i < count; i++) {
+            const start = i * sweep;
+            result.push({ start, mid: start + sweep / 2, sweep });
+        }
+        return result;
+    }
+}
+class SegmentAngleCalculatorFactory {
+    create(strategy) {
+        let calculator = SegmentAngleCalculatorFactory.CACHE.get(strategy);
+        if (calculator) {
+            return calculator;
+        }
+        switch (strategy) {
+            case SegmentAngleStrategy.Uniform:
+                calculator = new UniformSegmentAngleCalculator();
+                break;
+            case SegmentAngleStrategy.WeightBased:
+                calculator = new WeightBasedSegmentAngleCalculator();
+                break;
+            default:
+                throw new Error(`Unknown SegmentAngleStrategy: ${strategy}`);
+        }
+        SegmentAngleCalculatorFactory.CACHE.set(strategy, calculator);
+        return calculator;
+    }
+}
+SegmentAngleCalculatorFactory.CACHE = new Map();
 // ===== Spinning Angle Calculator (Strategy Pattern) =====
 // ── Concrete calculators ──────────────────────────────────────────────────────
 /** Lands at a uniformly random position within the inner 95% of the segment — single phase. */
@@ -1380,6 +1468,11 @@ class UndershootAngleCalculator {
  */
 class WeightedRandomCalculatorFactory {
     create(context) {
+        const cls = this.getClass(context);
+        const calculator = this.getOrCreate(cls);
+        return calculator;
+    }
+    getClass(context) {
         if (context.modeId === WheelSpinStrategyCode.Skip)
             return WeightedRandomCalculatorFactory.NATURAL_ONLY;
         const pool = context.modeId === WheelSpinStrategyCode.Accelerate
@@ -1389,17 +1482,39 @@ class WeightedRandomCalculatorFactory {
         const weights = pool.map(([, w]) => w);
         return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
     }
+    getOrCreate(cls) {
+        let calculator = WeightedRandomCalculatorFactory.CACHE.get(cls);
+        if (calculator) {
+            return calculator;
+        }
+        switch (cls) {
+            case NaturalAngleCalculator:
+                calculator = new NaturalAngleCalculator();
+                break;
+            case OvershootAngleCalculator:
+                calculator = new OvershootAngleCalculator();
+                break;
+            case UndershootAngleCalculator:
+                calculator = new UndershootAngleCalculator();
+                break;
+            default:
+                throw new Error(`Unknown calculator class: ${cls.name}`);
+        }
+        WeightedRandomCalculatorFactory.CACHE.set(cls, calculator);
+        return calculator;
+    }
 }
+WeightedRandomCalculatorFactory.CACHE = new Map();
 WeightedRandomCalculatorFactory.NORMAL_POOL = [
-    [new NaturalAngleCalculator(), 0],
-    [new OvershootAngleCalculator(), 5],
-    [new UndershootAngleCalculator(), 5],
+    [NaturalAngleCalculator, 96],
+    [OvershootAngleCalculator, 2],
+    [UndershootAngleCalculator, 2],
 ];
 WeightedRandomCalculatorFactory.ACCEL_POOL = [
-    [new NaturalAngleCalculator(), 95],
-    [new OvershootAngleCalculator(), 5],
+    [NaturalAngleCalculator, 95],
+    [OvershootAngleCalculator, 5],
 ];
-WeightedRandomCalculatorFactory.NATURAL_ONLY = new NaturalAngleCalculator();
+WeightedRandomCalculatorFactory.NATURAL_ONLY = NaturalAngleCalculator;
 // ===== Wheel Spinner =====
 class DefaultWheelSpinner {
     constructor(animator, calculatorFactory) {
@@ -1444,18 +1559,20 @@ DefaultWheelSpinner.PHASE1_FRAC = 0.85; // t-fraction at which the correction bl
  * spin-target computation to them.
  */
 class SpinningWheel {
-    constructor(drawer, animator, spinner) {
+    constructor(angleCalculatorFactory, drawer, animator, spinner) {
         this.segments = [];
         this.segAngles = [];
+        this.angleCalculatorFactory = angleCalculatorFactory;
         this.drawer = drawer;
         this.animator = animator;
         this.spinner = spinner;
         this.redraw();
     }
     // ===== Public API =====
-    setSegments(segments) {
+    setSegments(segments, angleStrategy) {
         this.segments = segments;
-        this.segAngles = this.computeAngles(segments);
+        const angleCalculator = this.angleCalculatorFactory.create(angleStrategy);
+        this.segAngles = angleCalculator.calculate(segments);
         if (!this.animator.isSpinning)
             this.redraw();
     }
@@ -1472,43 +1589,7 @@ class SpinningWheel {
     redraw() {
         this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
     }
-    computeAngles(segs) {
-        if (segs.length === 0)
-            return [];
-        const total = segs.reduce((s, seg) => s + seg.weight, 0) || 1;
-        // Compute visual fractions with a minimum floor so tiny segments stay visible.
-        // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
-        // Iterate until stable (convergence typically takes 1-2 passes).
-        const frac = segs.map(s => s.weight / total);
-        const MIN = SpinningWheel.MIN_SEG_FRAC;
-        for (let iter = 0; iter < 8; iter++) {
-            const smallIdx = frac.reduce((acc, f, i) => { if (f < MIN)
-                acc.push(i); return acc; }, []);
-            if (smallIdx.length === 0)
-                break;
-            const reserved = smallIdx.length * MIN;
-            if (reserved >= 1) {
-                frac.fill(1 / segs.length);
-                break;
-            } // pathological: equal split
-            const largeTotal = frac.reduce((s, f, i) => s + (frac[i] < MIN ? 0 : f), 0);
-            const scale = (1 - reserved) / largeTotal;
-            for (let i = 0; i < frac.length; i++) {
-                frac[i] = frac[i] < MIN ? MIN : frac[i] * scale;
-            }
-        }
-        const result = [];
-        let cum = 0;
-        for (let i = 0; i < segs.length; i++) {
-            const start = cum * Maths.TAU;
-            const sweep = frac[i] * Maths.TAU;
-            result.push({ start, mid: start + sweep / 2, sweep });
-            cum += frac[i];
-        }
-        return result;
-    }
 }
-SpinningWheel.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10°)
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
@@ -1530,6 +1611,7 @@ class RewarderService {
         this.stdPityInterceptor = null;
         this.featuredPityInterceptors = [];
         this.profiles = [];
+        this.segmentAngleStrategy = SegmentAngleStrategy.Uniform;
         this.activeProfileId = "";
         this._pipelineFactory = pipelineFactory;
         this._storage = storage;
@@ -1943,10 +2025,11 @@ class RewarderApp {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas = document.getElementById("wheel-canvas");
+        const angleCalculatorFactory = new SegmentAngleCalculatorFactory();
         const drawer = new CanvasWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
         const spinner = new DefaultWheelSpinner(animator, this.calculatorFactory);
-        this.wheel = new SpinningWheel(drawer, animator, spinner);
+        this.wheel = new SpinningWheel(angleCalculatorFactory, drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -2433,7 +2516,7 @@ class RewarderApp {
             borderColor: leaf.borderColor,
             weight: this.effectiveWeight(leaf.id),
         }));
-        this.wheel.setSegments(segments);
+        this.wheel.setSegments(segments, this.svc.segmentAngleStrategy);
     }
     effectiveWeight(leafId, nodes = this.svc.rewardNodes, parentFraction = 1) {
         for (const node of nodes) {

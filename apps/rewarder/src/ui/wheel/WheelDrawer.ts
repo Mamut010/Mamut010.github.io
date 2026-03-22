@@ -1,17 +1,5 @@
 // ===== Wheel Drawer =====
 
-/** Core data model for one wheel segment. */
-interface WheelSegment {
-    id:          string;
-    name:        string;
-    color:       string;       // label color (reserved for future use)
-    borderColor: string;       // segment fill color
-    weight:      number;       // relative weight (any positive number, will be normalised)
-}
-
-/** Pre-computed angular geometry for one segment. */
-type SegmentAngles = { start: number; mid: number; sweep: number };
-
 interface ISpinningWheelDrawer {
     /** Render the wheel at the given rotation with the given geometry. */
     draw(rotation: number, segments: WheelSegment[], segAngles: SegmentAngles[]): void;
