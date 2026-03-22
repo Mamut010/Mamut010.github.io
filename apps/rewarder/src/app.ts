@@ -6,12 +6,13 @@ interface RollRecord {
 }
 
 class RewarderApp {
-    private wheel!:      SpinningWheel;
+    private wheel!:      SpinningWheel<RewardNodeConfig>;
     private isRolling    = false;
-    private spinStrategy!: IWheelSpinStrategy;   // assigned in init()
+    private spinStrategy!: IWheelSpinStrategy<RewardNodeConfig>;   // assigned in init()
 
     // ── Composition root ─────────────────────────────────────────────────────
     private readonly svc = new RewarderService(
+        new SegmentAngleCalculatorFactory(),
         new PipelineFactory(),
         new LocalStorageService("REWARDER_"),
         new CyclingColorProvider(),
@@ -24,11 +25,10 @@ class RewarderApp {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
-        const angleCalculatorFactory = new SegmentAngleCalculatorFactory();
-        const drawer   = new CanvasWheelDrawer(canvas);
+        const drawer   = new CanvasRewardNodeWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
-        const spinner  = new DefaultWheelSpinner(animator, this.calculatorFactory);
-        this.wheel = new SpinningWheel(angleCalculatorFactory, drawer, animator, spinner);
+        const spinner  = new DefaultWheelSpinner<RewardNodeConfig>(animator, this.calculatorFactory);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -229,7 +229,13 @@ class RewarderApp {
 
         for (let i = 0; i < count; i++) {
             const { reward, rollNum } = await this.svc.roll(this.rng);
-            await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
+            let targetIndex = this.wheel.segments.findIndex(s => s.data.id === reward.id);
+            if (targetIndex === -1) {
+                console.warn(`Rolled reward with id ${reward.id} not found among wheel segments`);
+                targetIndex = 0;   // fallback to prevent spin failure; landing will be visually incorrect but at least the reward will be shown in the result  
+            }
+
+            await this.spinStrategy.execute(this.wheel, targetIndex);
             this.renderLatestResult(reward, rollNum);
             this.renderStats();
             this.renderPityProgress();
@@ -523,15 +529,15 @@ class RewarderApp {
     // ===== Wheel helpers =====
 
     private updateWheelSegments(): void {
-        const leaves   = collectLeaves(this.svc.rewardNodes);
-        const segments: WheelSegment[] = leaves.map(leaf => ({
-            id:          leaf.id,
-            name:        leaf.name,
-            color:       leaf.color,
-            borderColor: leaf.borderColor,
-            weight:      this.effectiveWeight(leaf.id),
-        }));
-        this.wheel.setSegments(segments, this.svc.segmentAngleStrategy);
+        const leaves  = collectLeaves(this.svc.rewardNodes);
+        const weights = leaves.map(leaf => this.effectiveWeight(leaf.id));
+        const angles  = this.svc.segmentAngleCalculator.calculate(weights);
+        const segments = leaves.map((leaf, index) => new WheelSegment(
+            leaf,
+            weights[index],
+            angles[index],
+        ));
+        this.wheel.setSegments(segments);
     }
 
     private effectiveWeight(

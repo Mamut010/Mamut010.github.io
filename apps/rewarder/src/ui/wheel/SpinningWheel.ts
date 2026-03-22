@@ -6,22 +6,18 @@
  * the three subcomponents together, but delegates all drawing, animation, and
  * spin-target computation to them.
  */
-class SpinningWheel {
-    private segments:  WheelSegment[]  = [];
-    private segAngles: SegmentAngles[] = [];
+class SpinningWheel<T> {
+    private _segments:  WheelSegment<T>[]  = [];
 
-    private readonly angleCalculatorFactory: ISegmentAngleCalculatorFactory;
-    private readonly drawer:   ISpinningWheelDrawer;
+    private readonly drawer:   ISpinningWheelDrawer<T>;
     private readonly animator: ISpinningWheelAnimator;
-    private readonly spinner:  IWheelSpinner;
+    private readonly spinner:  IWheelSpinner<T>;
 
     constructor(
-        angleCalculatorFactory: ISegmentAngleCalculatorFactory,
-        drawer:   ISpinningWheelDrawer,
+        drawer:   ISpinningWheelDrawer<T>,
         animator: ISpinningWheelAnimator,
-        spinner:  IWheelSpinner,
+        spinner:  IWheelSpinner<T>,
     ) {
-        this.angleCalculatorFactory = angleCalculatorFactory;
         this.drawer   = drawer;
         this.animator = animator;
         this.spinner  = spinner;
@@ -30,20 +26,17 @@ class SpinningWheel {
 
     // ===== Public API =====
 
-    setSegments(segments: WheelSegment[], angleStrategy: SegmentAngleStrategy): void {
-        this.segments  = segments;
-        const angleCalculator = this.angleCalculatorFactory.create(angleStrategy);
-        this.segAngles = angleCalculator.calculate(segments);
+    get segments(): readonly WheelSegment<T>[] {
+        return this._segments;
+    }
+
+    setSegments(segments: WheelSegment<T>[]): void {
+        this._segments  = segments;
         if (!this.animator.isSpinning) this.redraw();
     }
 
-    findSegmentIndex(rewardId: string): number {
-        const idx = this.segments.findIndex(s => s.id === rewardId);
-        return idx >= 0 ? idx : 0;
-    }
-
     spin(targetIndex: number, context: SpinContext): Promise<void> {
-        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this._segments, () => this.redraw());
     }
 
     accelerate(): void { this.spinner.accelerate(); }
@@ -52,6 +45,6 @@ class SpinningWheel {
     // ===== Helpers =====
 
     private redraw(): void {
-        this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
+        this.drawer.draw(this.animator.currentRotation, this._segments);
     }
 }

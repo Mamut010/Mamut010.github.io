@@ -1,12 +1,12 @@
 // ===== Wheel Drawer =====
 
-interface ISpinningWheelDrawer {
+interface ISpinningWheelDrawer<T> {
     /** Render the wheel at the given rotation with the given geometry. */
-    draw(rotation: number, segments: WheelSegment[], segAngles: SegmentAngles[]): void;
+    draw(rotation: number, segments: WheelSegment<T>[]): void;
 }
 
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
-class CanvasWheelDrawer implements ISpinningWheelDrawer {
+class CanvasRewardNodeWheelDrawer implements ISpinningWheelDrawer<RewardNodeConfig> {
     private static readonly BASE_OFFSET = -Maths.RIGHT_ANGLE; // rotate so angle 0 points to the top
 
     private readonly canvas: HTMLCanvasElement;
@@ -17,7 +17,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         this.ctx    = canvas.getContext("2d")!;
     }
 
-    draw(rotation: number, segments: WheelSegment[], segAngles: SegmentAngles[]): void {
+    draw(rotation: number, segments: WheelSegment<RewardNodeConfig>[]): void {
         const wheelShape = this.getWheelShape();
 
         this.clearCanvas();
@@ -27,10 +27,10 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
             return;
         }
 
-        const offset = CanvasWheelDrawer.BASE_OFFSET + rotation;
+        const offset = CanvasRewardNodeWheelDrawer.BASE_OFFSET + rotation;
 
-        this.fillSegments(segments, segAngles, offset, wheelShape);
-        this.drawTextLabels(segments, segAngles, offset, wheelShape);
+        this.fillSegments(segments, offset, wheelShape);
+        this.drawTextLabels(segments, offset, wheelShape);
         this.drawOuterRing(wheelShape);
         this.drawCenterCap(wheelShape);
         this.drawPointer(wheelShape);
@@ -62,26 +62,26 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         this.drawPointer(wheelShape);
     }
 
-    private fillSegments(segments: WheelSegment[], segAngles: SegmentAngles[], offset: number, wheelShape: Circle): void {
+    private fillSegments(segments: WheelSegment<RewardNodeConfig>[], offset: number, wheelShape: Circle): void {
         for (let i = 0; i < segments.length; i++) {
-            this.fillSegment(segments[i], segAngles[i], offset, wheelShape);
+            this.fillSegment(segments[i], offset, wheelShape);
         }
     }
 
-    private fillSegment(seg: WheelSegment, angles: SegmentAngles, offset: number, wheelShape: Circle): void {
+    private fillSegment(seg: WheelSegment<RewardNodeConfig>, offset: number, wheelShape: Circle): void {
         const ctx    = this.ctx;
         const cx     = wheelShape.x;
         const cy     = wheelShape.y;
         const r      = wheelShape.r;
-        const startA = angles.start + offset;
-        const endA   = startA + angles.sweep;
+        const startA = seg.angle.start + offset;
+        const endA   = startA + seg.angle.sweep;
 
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, r, startA, endA);
         ctx.closePath();
 
-        ctx.fillStyle = seg.borderColor || "#334155";
+        ctx.fillStyle = seg.data.borderColor || "#334155";
         ctx.fill();
 
         // Subtle sheen so dark colours remain distinguishable
@@ -102,27 +102,27 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.stroke();
     }
 
-    private drawTextLabels(segments: WheelSegment[], segAngles: SegmentAngles[], offset: number, wheelShape: Circle): void {
+    private drawTextLabels(segments: WheelSegment<RewardNodeConfig>[], offset: number, wheelShape: Circle): void {
         for (let i = 0; i < segments.length; i++) {
-            this.drawTextLabel(segments[i], segAngles[i], offset, wheelShape);
+            this.drawTextLabel(segments[i], offset, wheelShape);
         }
     }
 
-    private drawTextLabel(seg: WheelSegment, angles: SegmentAngles, offset: number, wheelShape: Circle): void {
+    private drawTextLabel(seg: WheelSegment<RewardNodeConfig>, offset: number, wheelShape: Circle): void {
         const ctx    = this.ctx;
         const cx     = wheelShape.x;
         const cy     = wheelShape.y;
         const r      = wheelShape.r;
-        const midA   = angles.mid + offset;
+        const midA   = seg.angle.mid + offset;
         const txtR   = r * 0.62;
-        const arcLen = angles.sweep * txtR;   // arc length at label radius
+        const arcLen = seg.angle.sweep * txtR;   // arc length at label radius
 
         // Font size adapts to canvas size and available arc length
         const fontSize = Maths.clamp(arcLen * 0.45, r * 0.05, r * 0.098);
         const maxChars = Math.floor(arcLen / (fontSize * 0.62));
         if (maxChars < 1) return;
 
-        let label = seg.name;
+        let label = seg.data.name;
         if (label.length > maxChars) {
             label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
         }
@@ -180,7 +180,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
 
         const ph   = Math.max(8,  r * 0.098); // pointer height
         const pw   = Math.max(5,  r * 0.068); // pointer half-width
-        const tipY = cy - r - Math.max(1, r * 0.015); // tip just above the outer ring
+        const tipY = cy - 0.95 * r - Math.max(1, r * 0.015); // tip just above the outer ring
         const baseY = tipY - ph;
 
         ctx.beginPath();
@@ -189,9 +189,9 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.lineTo(cx + pw, baseY);
         ctx.closePath();
 
-        ctx.shadowColor = "rgba(192,132,252,0.7)";
+        ctx.shadowColor = "rgba(43, 33, 53, 0.7)";
         ctx.shadowBlur  = Math.max(4, r * 0.076);
-        ctx.fillStyle   = "#c084fc";
+        ctx.fillStyle   = "#8c61b8";
         ctx.fill();
         ctx.shadowBlur  = 0;
     }

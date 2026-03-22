@@ -51,7 +51,6 @@
         "src/utils/DomUtils.ts",
         "src/services/StorageService.ts",
         "src/ui/wheel/models/WheelSegment.ts",
-        "src/ui/wheel/models/SegmentAngle.ts",
         "src/ui/wheel/WheelDrawer.ts",
         "src/ui/wheel/WheelAnimator.ts",
         "src/ui/wheel/WheelSpinMode.ts",

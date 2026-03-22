@@ -975,23 +975,40 @@ class LocalStorageService {
         return this.prefix ? `${this.prefix}${suffix}` : suffix;
     }
 }
+class WheelSegment {
+    constructor(data, weight, angle) {
+        this.data = data;
+        this.weight = weight;
+        this.angle = angle;
+    }
+}
+class WheelSegmentAngle {
+    constructor(start, sweep) {
+        this.start = start;
+        this.sweep = sweep;
+    }
+    get mid() {
+        return this.start + this.sweep / 2;
+    }
+}
+;
 // ===== Wheel Drawer =====
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
-class CanvasWheelDrawer {
+class CanvasRewardNodeWheelDrawer {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
     }
-    draw(rotation, segments, segAngles) {
+    draw(rotation, segments) {
         const wheelShape = this.getWheelShape();
         this.clearCanvas();
         if (segments.length === 0) {
             this.drawEmptyPlaceholder(wheelShape);
             return;
         }
-        const offset = CanvasWheelDrawer.BASE_OFFSET + rotation;
-        this.fillSegments(segments, segAngles, offset, wheelShape);
-        this.drawTextLabels(segments, segAngles, offset, wheelShape);
+        const offset = CanvasRewardNodeWheelDrawer.BASE_OFFSET + rotation;
+        this.fillSegments(segments, offset, wheelShape);
+        this.drawTextLabels(segments, offset, wheelShape);
         this.drawOuterRing(wheelShape);
         this.drawCenterCap(wheelShape);
         this.drawPointer(wheelShape);
@@ -1018,23 +1035,23 @@ class CanvasWheelDrawer {
         ctx.stroke();
         this.drawPointer(wheelShape);
     }
-    fillSegments(segments, segAngles, offset, wheelShape) {
+    fillSegments(segments, offset, wheelShape) {
         for (let i = 0; i < segments.length; i++) {
-            this.fillSegment(segments[i], segAngles[i], offset, wheelShape);
+            this.fillSegment(segments[i], offset, wheelShape);
         }
     }
-    fillSegment(seg, angles, offset, wheelShape) {
+    fillSegment(seg, offset, wheelShape) {
         const ctx = this.ctx;
         const cx = wheelShape.x;
         const cy = wheelShape.y;
         const r = wheelShape.r;
-        const startA = angles.start + offset;
-        const endA = startA + angles.sweep;
+        const startA = seg.angle.start + offset;
+        const endA = startA + seg.angle.sweep;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, r, startA, endA);
         ctx.closePath();
-        ctx.fillStyle = seg.borderColor || "#334155";
+        ctx.fillStyle = seg.data.borderColor || "#334155";
         ctx.fill();
         // Subtle sheen so dark colours remain distinguishable
         ctx.fillStyle = "rgba(255,255,255,0.06)";
@@ -1051,25 +1068,25 @@ class CanvasWheelDrawer {
         ctx.lineWidth = Math.max(1, radius * 0.006);
         ctx.stroke();
     }
-    drawTextLabels(segments, segAngles, offset, wheelShape) {
+    drawTextLabels(segments, offset, wheelShape) {
         for (let i = 0; i < segments.length; i++) {
-            this.drawTextLabel(segments[i], segAngles[i], offset, wheelShape);
+            this.drawTextLabel(segments[i], offset, wheelShape);
         }
     }
-    drawTextLabel(seg, angles, offset, wheelShape) {
+    drawTextLabel(seg, offset, wheelShape) {
         const ctx = this.ctx;
         const cx = wheelShape.x;
         const cy = wheelShape.y;
         const r = wheelShape.r;
-        const midA = angles.mid + offset;
+        const midA = seg.angle.mid + offset;
         const txtR = r * 0.62;
-        const arcLen = angles.sweep * txtR; // arc length at label radius
+        const arcLen = seg.angle.sweep * txtR; // arc length at label radius
         // Font size adapts to canvas size and available arc length
         const fontSize = Maths.clamp(arcLen * 0.45, r * 0.05, r * 0.098);
         const maxChars = Math.floor(arcLen / (fontSize * 0.62));
         if (maxChars < 1)
             return;
-        let label = seg.name;
+        let label = seg.data.name;
         if (label.length > maxChars) {
             label = maxChars >= 2 ? label.slice(0, maxChars - 1) + "\u2026" : label.slice(0, 1);
         }
@@ -1119,21 +1136,21 @@ class CanvasWheelDrawer {
         const r = wheelShape.r;
         const ph = Math.max(8, r * 0.098); // pointer height
         const pw = Math.max(5, r * 0.068); // pointer half-width
-        const tipY = cy - r - Math.max(1, r * 0.015); // tip just above the outer ring
+        const tipY = cy - 0.95 * r - Math.max(1, r * 0.015); // tip just above the outer ring
         const baseY = tipY - ph;
         ctx.beginPath();
         ctx.moveTo(cx, tipY);
         ctx.lineTo(cx - pw, baseY);
         ctx.lineTo(cx + pw, baseY);
         ctx.closePath();
-        ctx.shadowColor = "rgba(192,132,252,0.7)";
+        ctx.shadowColor = "rgba(43, 33, 53, 0.7)";
         ctx.shadowBlur = Math.max(4, r * 0.076);
-        ctx.fillStyle = "#c084fc";
+        ctx.fillStyle = "#8c61b8";
         ctx.fill();
         ctx.shadowBlur = 0;
     }
 }
-CanvasWheelDrawer.BASE_OFFSET = -Maths.RIGHT_ANGLE; // rotate so angle 0 points to the top
+CanvasRewardNodeWheelDrawer.BASE_OFFSET = -Maths.RIGHT_ANGLE; // rotate so angle 0 points to the top
 // ===== Wheel Spin Animator =====
 /**
  * Unified single-pass animator.
@@ -1325,14 +1342,28 @@ const SegmentAngleStrategy = {
  * This is the default and recommended angle calculator for general use.
  */
 class WeightBasedSegmentAngleCalculator {
-    calculate(segments) {
-        if (segments.length === 0)
+    calculate(weights) {
+        if (weights.length === 0)
             return [];
-        const total = segments.reduce((s, seg) => s + seg.weight, 0) || 1;
-        // Compute visual fractions with a minimum floor so tiny segments stay visible.
-        // Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
+        const fractions = this.calculateSegmentFractions(weights);
+        const result = [];
+        let cum = 0;
+        for (let i = 0; i < weights.length; i++) {
+            const start = cum * Maths.TAU;
+            const sweep = fractions[i] * Maths.TAU;
+            result.push(new WheelSegmentAngle(start, sweep));
+            cum += fractions[i];
+        }
+        return result;
+    }
+    /**
+     * Compute visual fractions with a minimum floor so tiny segments stay visible.
+     * Segments below MIN_SEG_FRAC are boosted; larger ones are scaled down proportionally.
+     */
+    calculateSegmentFractions(weights) {
+        const total = weights.reduce((s, w) => s + w, 0) || 1;
         // Iterate until stable (convergence typically takes 1-2 passes).
-        const frac = segments.map(s => s.weight / total);
+        const frac = weights.map(w => w / total);
         const MIN = WeightBasedSegmentAngleCalculator.MIN_SEG_FRAC;
         for (let iter = 0; iter < 8; iter++) {
             const smallIdx = frac.reduce((acc, f, i) => { if (f < MIN)
@@ -1341,7 +1372,7 @@ class WeightBasedSegmentAngleCalculator {
                 break;
             const reserved = smallIdx.length * MIN;
             if (reserved >= 1) {
-                frac.fill(1 / segments.length);
+                frac.fill(1 / weights.length);
                 break;
             } // pathological: equal split
             const largeTotal = frac.reduce((s, f, i) => s + (frac[i] < MIN ? 0 : f), 0);
@@ -1350,15 +1381,7 @@ class WeightBasedSegmentAngleCalculator {
                 frac[i] = frac[i] < MIN ? MIN : frac[i] * scale;
             }
         }
-        const result = [];
-        let cum = 0;
-        for (let i = 0; i < segments.length; i++) {
-            const start = cum * Maths.TAU;
-            const sweep = frac[i] * Maths.TAU;
-            result.push({ start, mid: start + sweep / 2, sweep });
-            cum += frac[i];
-        }
-        return result;
+        return frac;
     }
 }
 WeightBasedSegmentAngleCalculator.MIN_SEG_FRAC = 0.028; // minimum visual fraction per segment (~10°)
@@ -1367,22 +1390,25 @@ WeightBasedSegmentAngleCalculator.MIN_SEG_FRAC = 0.028; // minimum visual fracti
  * This is simpler and may be preferable for small wheels with similar weights, but generally less visually informative than the weight-based calculator.
  */
 class UniformSegmentAngleCalculator {
-    calculate(segments) {
-        const count = segments.length;
+    calculate(weights) {
+        const count = weights.length;
         if (count === 0)
             return [];
         const sweep = Maths.TAU / count;
         const result = [];
         for (let i = 0; i < count; i++) {
             const start = i * sweep;
-            result.push({ start, mid: start + sweep / 2, sweep });
+            result.push(new WheelSegmentAngle(start, sweep));
         }
         return result;
     }
 }
 class SegmentAngleCalculatorFactory {
+    constructor() {
+        this._cache = new Map();
+    }
     create(strategy) {
-        let calculator = SegmentAngleCalculatorFactory.CACHE.get(strategy);
+        let calculator = this._cache.get(strategy);
         if (calculator) {
             return calculator;
         }
@@ -1396,19 +1422,27 @@ class SegmentAngleCalculatorFactory {
             default:
                 throw new Error(`Unknown SegmentAngleStrategy: ${strategy}`);
         }
-        SegmentAngleCalculatorFactory.CACHE.set(strategy, calculator);
+        this._cache.set(strategy, calculator);
         return calculator;
     }
 }
-SegmentAngleCalculatorFactory.CACHE = new Map();
 // ===== Spinning Angle Calculator (Strategy Pattern) =====
+class SpinCalculationContext {
+    constructor(targetIndex, segments) {
+        this.targetIndex = targetIndex;
+        this.segments = segments;
+    }
+    get targetSegment() {
+        return this.segments[this.targetIndex];
+    }
+}
 // ── Concrete calculators ──────────────────────────────────────────────────────
 /** Lands at a uniformly random position within the inner 95% of the segment — single phase. */
 class NaturalAngleCalculator {
-    calculate({ targetIndex, segAngles }) {
-        const { start, sweep } = segAngles[targetIndex];
-        const margin = sweep * 0.025; // avoid landing too close to edges where visual glitches are more likely
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
+    calculate(ctx) {
+        const angle = ctx.targetSegment.angle;
+        const margin = angle.sweep * 0.025; // avoid landing too close to edges where visual glitches are more likely
+        const landingAngle = angle.start + margin + Math.random() * (angle.sweep - 2 * margin);
         return { landingAngle };
     }
 }
@@ -1421,15 +1455,15 @@ class NaturalAngleCalculator {
  * briefly visits the neighbouring segment before returning.
  */
 class OvershootAngleCalculator {
-    calculate({ targetIndex, segAngles }) {
-        const { start, sweep } = segAngles[targetIndex];
+    calculate(ctx) {
+        const angle = ctx.targetSegment.angle;
         // Landing sits close to the trailing edge (start) so the correction
         // needed to cross it is as small as possible.
         // Cap distInside so large segments don't push correctionDelta too high.
-        const distInside = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
-        const landingAngle = start + distInside;
+        const distInside = Math.min(angle.sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = angle.start + distInside;
         // How far past the trailing edge the pointer should briefly appear.
-        const extraGap = Maths.clamp(sweep * 0.04, 0.025, 0.06);
+        const extraGap = Maths.clamp(angle.sweep * 0.04, 0.025, 0.06);
         const correctionDelta = distInside + extraGap; // always crosses start
         return {
             landingAngle,
@@ -1445,13 +1479,13 @@ class OvershootAngleCalculator {
  * (start + sweep) so the pointer briefly sits in the preceding segment.
  */
 class UndershootAngleCalculator {
-    calculate({ targetIndex, segAngles }) {
-        const { start, sweep } = segAngles[targetIndex];
+    calculate(ctx) {
+        const angle = ctx.targetSegment.angle;
         // Landing sits close to the leading edge (start + sweep).
-        const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
-        const landingAngle = start + sweep - distFromLeading;
+        const distFromLeading = Math.min(angle.sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle = angle.start + angle.sweep - distFromLeading;
         // How far past the leading edge the pointer should briefly appear.
-        const extraGap = Maths.clamp(sweep * 0.04, 0.025, 0.06);
+        const extraGap = Maths.clamp(angle.sweep * 0.04, 0.025, 0.06);
         const correctionDelta = -(distFromLeading + extraGap); // always crosses start+sweep
         return {
             landingAngle,
@@ -1467,6 +1501,19 @@ class UndershootAngleCalculator {
  * - normal mode: mix of all three for varied feel.
  */
 class WeightedRandomCalculatorFactory {
+    constructor() {
+        this._cache = new Map();
+        this._normalPool = [
+            [(NaturalAngleCalculator), 96],
+            [(OvershootAngleCalculator), 2],
+            [(UndershootAngleCalculator), 2],
+        ];
+        this._accelPool = [
+            [(NaturalAngleCalculator), 95],
+            [(OvershootAngleCalculator), 5],
+        ];
+        this._naturalOnly = (NaturalAngleCalculator);
+    }
     create(context) {
         const cls = this.getClass(context);
         const calculator = this.getOrCreate(cls);
@@ -1474,16 +1521,16 @@ class WeightedRandomCalculatorFactory {
     }
     getClass(context) {
         if (context.modeId === WheelSpinStrategyCode.Skip)
-            return WeightedRandomCalculatorFactory.NATURAL_ONLY;
+            return this._naturalOnly;
         const pool = context.modeId === WheelSpinStrategyCode.Accelerate
-            ? WeightedRandomCalculatorFactory.ACCEL_POOL
-            : WeightedRandomCalculatorFactory.NORMAL_POOL;
+            ? this._accelPool
+            : this._normalPool;
         const items = pool.map(([calc]) => calc);
         const weights = pool.map(([, w]) => w);
-        return Randoms.nextItemWeighted(items, weights) ?? WeightedRandomCalculatorFactory.NATURAL_ONLY;
+        return Randoms.nextItemWeighted(items, weights) ?? this._naturalOnly;
     }
     getOrCreate(cls) {
-        let calculator = WeightedRandomCalculatorFactory.CACHE.get(cls);
+        let calculator = this._cache.get(cls);
         if (calculator) {
             return calculator;
         }
@@ -1500,31 +1547,20 @@ class WeightedRandomCalculatorFactory {
             default:
                 throw new Error(`Unknown calculator class: ${cls.name}`);
         }
-        WeightedRandomCalculatorFactory.CACHE.set(cls, calculator);
+        this._cache.set(cls, calculator);
         return calculator;
     }
 }
-WeightedRandomCalculatorFactory.CACHE = new Map();
-WeightedRandomCalculatorFactory.NORMAL_POOL = [
-    [NaturalAngleCalculator, 96],
-    [OvershootAngleCalculator, 2],
-    [UndershootAngleCalculator, 2],
-];
-WeightedRandomCalculatorFactory.ACCEL_POOL = [
-    [NaturalAngleCalculator, 95],
-    [OvershootAngleCalculator, 5],
-];
-WeightedRandomCalculatorFactory.NATURAL_ONLY = NaturalAngleCalculator;
 // ===== Wheel Spinner =====
 class DefaultWheelSpinner {
     constructor(animator, calculatorFactory) {
         this.animator = animator;
         this.calculatorFactory = calculatorFactory;
     }
-    spin(targetIndex, context, segments, segAngles, onFrame) {
+    spin(targetIndex, context, segments, onFrame) {
         const TAU = Maths.TAU;
         const calculator = this.calculatorFactory.create(context);
-        const landing = calculator.calculate({ targetIndex, segments, segAngles });
+        const landing = calculator.calculate(new SpinCalculationContext(targetIndex, segments));
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a
         const targetRot = Maths.normalizeAngle(-landing.landingAngle);
@@ -1559,41 +1595,36 @@ DefaultWheelSpinner.PHASE1_FRAC = 0.85; // t-fraction at which the correction bl
  * spin-target computation to them.
  */
 class SpinningWheel {
-    constructor(angleCalculatorFactory, drawer, animator, spinner) {
-        this.segments = [];
-        this.segAngles = [];
-        this.angleCalculatorFactory = angleCalculatorFactory;
+    constructor(drawer, animator, spinner) {
+        this._segments = [];
         this.drawer = drawer;
         this.animator = animator;
         this.spinner = spinner;
         this.redraw();
     }
     // ===== Public API =====
-    setSegments(segments, angleStrategy) {
-        this.segments = segments;
-        const angleCalculator = this.angleCalculatorFactory.create(angleStrategy);
-        this.segAngles = angleCalculator.calculate(segments);
+    get segments() {
+        return this._segments;
+    }
+    setSegments(segments) {
+        this._segments = segments;
         if (!this.animator.isSpinning)
             this.redraw();
     }
-    findSegmentIndex(rewardId) {
-        const idx = this.segments.findIndex(s => s.id === rewardId);
-        return idx >= 0 ? idx : 0;
-    }
     spin(targetIndex, context) {
-        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this._segments, () => this.redraw());
     }
     accelerate() { this.spinner.accelerate(); }
     skip() { this.spinner.skip(); }
     // ===== Helpers =====
     redraw() {
-        this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
+        this.drawer.draw(this.animator.currentRotation, this._segments);
     }
 }
 // ===== Rewarder Service =====
 // Owns all application state and business logic. No DOM access.
 class RewarderService {
-    constructor(pipelineFactory, storage, colorProvider) {
+    constructor(angleCalculatorFactory, pipelineFactory, storage, colorProvider) {
         this.rewardNodes = defaultRewardNodes();
         this.pityEnabled = true;
         this.pityThreshold = 90;
@@ -1610,12 +1641,17 @@ class RewarderService {
         this.pityInterceptor = null;
         this.stdPityInterceptor = null;
         this.featuredPityInterceptors = [];
-        this.profiles = [];
         this.segmentAngleStrategy = SegmentAngleStrategy.Uniform;
+        this.profiles = [];
         this.activeProfileId = "";
+        this._angleCalculatorFactory = angleCalculatorFactory;
         this._pipelineFactory = pipelineFactory;
         this._storage = storage;
         this._colorProvider = colorProvider;
+        this._angleCalculator = this._angleCalculatorFactory.create(this.segmentAngleStrategy);
+    }
+    get segmentAngleCalculator() {
+        return this._angleCalculator;
     }
     // ===== Init =====
     init() {
@@ -2016,7 +2052,7 @@ class RewarderApp {
     constructor() {
         this.isRolling = false;
         // ── Composition root ─────────────────────────────────────────────────────
-        this.svc = new RewarderService(new PipelineFactory(), new LocalStorageService("REWARDER_"), new CyclingColorProvider());
+        this.svc = new RewarderService(new SegmentAngleCalculatorFactory(), new PipelineFactory(), new LocalStorageService("REWARDER_"), new CyclingColorProvider());
         this.spinModeFactory = new WheelSpinModeFactory();
         this.calculatorFactory = new WeightedRandomCalculatorFactory();
         this.rng = new MathRandomNumberGenerator();
@@ -2025,11 +2061,10 @@ class RewarderApp {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas = document.getElementById("wheel-canvas");
-        const angleCalculatorFactory = new SegmentAngleCalculatorFactory();
-        const drawer = new CanvasWheelDrawer(canvas);
+        const drawer = new CanvasRewardNodeWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
         const spinner = new DefaultWheelSpinner(animator, this.calculatorFactory);
-        this.wheel = new SpinningWheel(angleCalculatorFactory, drawer, animator, spinner);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -2230,7 +2265,12 @@ class RewarderApp {
         this.setRollButtonsDisabled(true);
         for (let i = 0; i < count; i++) {
             const { reward, rollNum } = await this.svc.roll(this.rng);
-            await this.spinStrategy.execute(this.wheel, this.wheel.findSegmentIndex(reward.id));
+            let targetIndex = this.wheel.segments.findIndex(s => s.data.id === reward.id);
+            if (targetIndex === -1) {
+                console.warn(`Rolled reward with id ${reward.id} not found among wheel segments`);
+                targetIndex = 0; // fallback to prevent spin failure; landing will be visually incorrect but at least the reward will be shown in the result  
+            }
+            await this.spinStrategy.execute(this.wheel, targetIndex);
             this.renderLatestResult(reward, rollNum);
             this.renderStats();
             this.renderPityProgress();
@@ -2509,14 +2549,10 @@ class RewarderApp {
     // ===== Wheel helpers =====
     updateWheelSegments() {
         const leaves = collectLeaves(this.svc.rewardNodes);
-        const segments = leaves.map(leaf => ({
-            id: leaf.id,
-            name: leaf.name,
-            color: leaf.color,
-            borderColor: leaf.borderColor,
-            weight: this.effectiveWeight(leaf.id),
-        }));
-        this.wheel.setSegments(segments, this.svc.segmentAngleStrategy);
+        const weights = leaves.map(leaf => this.effectiveWeight(leaf.id));
+        const angles = this.svc.segmentAngleCalculator.calculate(weights);
+        const segments = leaves.map((leaf, index) => new WheelSegment(leaf, weights[index], angles[index]));
+        this.wheel.setSegments(segments);
     }
     effectiveWeight(leafId, nodes = this.svc.rewardNodes, parentFraction = 1) {
         for (const node of nodes) {
