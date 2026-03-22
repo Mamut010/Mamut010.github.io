@@ -29,9 +29,14 @@ class RewarderService {
     private readonly _colorProvider: IRewardColorProvider;
 
     profiles: RewardProfile[] = [];
+    segmentAngleStrategy: SegmentAngleStrategy = SegmentAngleStrategy.Uniform;
     activeProfileId = "";
 
-    constructor(pipelineFactory: IPipelineFactory, storage: IStorageService, colorProvider: IRewardColorProvider) {
+    constructor(
+        pipelineFactory: IPipelineFactory,
+        storage: IStorageService,
+        colorProvider: IRewardColorProvider
+    ) {
         this._pipelineFactory = pipelineFactory;
         this._storage = storage;
         this._colorProvider = colorProvider;
