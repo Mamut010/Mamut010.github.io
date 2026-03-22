@@ -1,8 +1,9 @@
 // ===== Spinning Angle Calculator (Strategy Pattern) =====
 
 /** Context passed from the active spin mode into the calculator factory. */
-interface SpinContext {
-    modeId: WheelSpinStrategyCode;
+interface SpinContext<T> {
+    modeId: WheelSpinStrategyMode;
+    segments: readonly WheelSegment<T>[];
 }
 
 /**
@@ -22,7 +23,7 @@ interface SpinLandingResult {
 class SpinCalculationContext<T> {
     constructor(
         public readonly targetIndex: number,
-        public readonly segments:    WheelSegment<T>[],
+        public readonly segments:    readonly WheelSegment<T>[],
     ) {}
 
     get targetSegment(): WheelSegment<T> {
@@ -40,7 +41,7 @@ interface ISpinningAngleCalculator<T> {
 
 interface ISpinningAngleCalculatorFactory<T> {
     /** Decide which calculator to use given the current spinning context. */
-    create(ctx: SpinContext): ISpinningAngleCalculator<T>;
+    create(ctx: SpinContext<T>): ISpinningAngleCalculator<T>;
 }
 
 // ── Concrete calculators ──────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ class UndershootAngleCalculator<T> implements ISpinningAngleCalculator<T> {
  * - accelerate mode: mostly Natural, occasional Overshoot.
  * - normal mode: mix of all three for varied feel.
  */
-class WeightedRandomCalculatorFactory<T> implements ISpinningAngleCalculatorFactory<T> {
+class WeightedRandomAngleCalculatorFactory<T> implements ISpinningAngleCalculatorFactory<T> {
     private readonly _cache = new Map<
         Class<ISpinningAngleCalculator<T>>,
         ISpinningAngleCalculator<T>
@@ -131,17 +132,17 @@ class WeightedRandomCalculatorFactory<T> implements ISpinningAngleCalculatorFact
 
     private readonly _naturalOnly = NaturalAngleCalculator<T>;
 
-    create(context: SpinContext): ISpinningAngleCalculator<T> {
+    create(context: SpinContext<T>): ISpinningAngleCalculator<T> {
         const cls = this.getClass(context);
         const calculator = this.getOrCreate(cls);
         return calculator;
     }
 
-    private getClass(context: SpinContext): Class<ISpinningAngleCalculator<T>> {
-        if (context.modeId === WheelSpinStrategyCode.Skip)
+    private getClass(context: SpinContext<T>): Class<ISpinningAngleCalculator<T>> {
+        if (context.modeId === WheelSpinStrategyMode.Skip)
             return this._naturalOnly;
 
-        const pool = context.modeId === WheelSpinStrategyCode.Accelerate
+        const pool = context.modeId === WheelSpinStrategyMode.Accelerate
             ? this._accelPool
             : this._normalPool;
 

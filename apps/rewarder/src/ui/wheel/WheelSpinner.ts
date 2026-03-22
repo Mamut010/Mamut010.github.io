@@ -8,8 +8,7 @@
 interface IWheelSpinner<T> {
     spin(
         targetIndex: number,
-        context:     SpinContext,
-        segments:    WheelSegment<T>[],
+        context:     SpinContext<T>,
         onFrame:     () => void,
     ): Promise<void>;
     accelerate(): void;
@@ -30,13 +29,12 @@ class DefaultWheelSpinner<T> implements IWheelSpinner<T> {
 
     spin(
         targetIndex: number,
-        context:     SpinContext,
-        segments:    WheelSegment<T>[],
+        context:     SpinContext<T>,
         onFrame:     () => void,
     ): Promise<void> {
         const TAU        = Maths.TAU;
         const calculator = this.calculatorFactory.create(context);
-        const landing    = calculator.calculate(new SpinCalculationContext(targetIndex, segments));
+        const landing    = calculator.calculate(new SpinCalculationContext(targetIndex, context.segments));
 
         // Compute how much to rotate so landing.landingAngle faces the pointer at top.
         // A wheel-space angle `a` is under the pointer when: a + rot ≡ 0 (mod 2π) ⟹ rot ≡ -a

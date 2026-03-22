@@ -18,12 +18,12 @@ class RewarderApp {
         new CyclingColorProvider(),
     );
     private readonly spinModeFactory = new WheelSpinModeFactory();
-    private readonly calculatorFactory = new WeightedRandomCalculatorFactory();
+    private readonly calculatorFactory = new WeightedRandomAngleCalculatorFactory();
     private readonly rng = new MathRandomNumberGenerator();
 
     public init(): void {
         this.svc.init();
-        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
+        this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyMode.Normal);
         const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
         const drawer   = new CanvasRewardNodeWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
@@ -65,7 +65,7 @@ class RewarderApp {
         if (modeSel) {
             modeSel.addEventListener("click", (e) => {
                 const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-mode");
-                const mode = btn?.dataset.mode as WheelSpinStrategyCode | undefined;
+                const mode = btn?.dataset.mode as WheelSpinStrategyMode | undefined;
                 if (!mode) return;
                 try { this.spinStrategy = this.spinModeFactory.create(mode); } catch { return; }
                 modeSel.querySelectorAll(".btn-mode").forEach(b => b.classList.remove("is-active"));
