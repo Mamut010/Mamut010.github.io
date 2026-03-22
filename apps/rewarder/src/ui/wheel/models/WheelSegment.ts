@@ -1,7 +1,21 @@
-interface WheelSegment {
-    id:          string;
-    name:        string;
-    color:       string;       // label color (reserved for future use)
-    borderColor: string;       // segment fill color
-    weight:      number;       // relative weight (any positive number, will be normalised)
+class WheelSegment {
+    constructor(
+        public readonly id: string,
+        public name:        string,
+        public color:       string,
+        public borderColor: string,
+        public weight:      number,
+        public angle:       WheelSegmentAngle,
+    ) { }
 }
+
+class WheelSegmentAngle {
+    constructor(
+        public readonly start: number,
+        public readonly sweep: number) {
+    }
+
+    get mid(): number {
+        return this.start + this.sweep / 2;
+    }
+};

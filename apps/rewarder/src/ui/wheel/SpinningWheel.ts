@@ -8,20 +8,16 @@
  */
 class SpinningWheel {
     private segments:  WheelSegment[]  = [];
-    private segAngles: SegmentAngles[] = [];
 
-    private readonly angleCalculatorFactory: ISegmentAngleCalculatorFactory;
     private readonly drawer:   ISpinningWheelDrawer;
     private readonly animator: ISpinningWheelAnimator;
     private readonly spinner:  IWheelSpinner;
 
     constructor(
-        angleCalculatorFactory: ISegmentAngleCalculatorFactory,
         drawer:   ISpinningWheelDrawer,
         animator: ISpinningWheelAnimator,
         spinner:  IWheelSpinner,
     ) {
-        this.angleCalculatorFactory = angleCalculatorFactory;
         this.drawer   = drawer;
         this.animator = animator;
         this.spinner  = spinner;
@@ -30,10 +26,8 @@ class SpinningWheel {
 
     // ===== Public API =====
 
-    setSegments(segments: WheelSegment[], angleStrategy: SegmentAngleStrategy): void {
+    setSegments(segments: WheelSegment[]): void {
         this.segments  = segments;
-        const angleCalculator = this.angleCalculatorFactory.create(angleStrategy);
-        this.segAngles = angleCalculator.calculate(segments);
         if (!this.animator.isSpinning) this.redraw();
     }
 
@@ -43,7 +37,7 @@ class SpinningWheel {
     }
 
     spin(targetIndex: number, context: SpinContext): Promise<void> {
-        return this.spinner.spin(targetIndex, context, this.segments, this.segAngles, () => this.redraw());
+        return this.spinner.spin(targetIndex, context, this.segments, () => this.redraw());
     }
 
     accelerate(): void { this.spinner.accelerate(); }
@@ -52,6 +46,6 @@ class SpinningWheel {
     // ===== Helpers =====
 
     private redraw(): void {
-        this.drawer.draw(this.animator.currentRotation, this.segments, this.segAngles);
+        this.drawer.draw(this.animator.currentRotation, this.segments);
     }
 }

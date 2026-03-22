@@ -2,7 +2,7 @@
 
 interface ISpinningWheelDrawer {
     /** Render the wheel at the given rotation with the given geometry. */
-    draw(rotation: number, segments: WheelSegment[], segAngles: SegmentAngles[]): void;
+    draw(rotation: number, segments: WheelSegment[]): void;
 }
 
 /** Canvas 2D implementation of ISpinningWheelDrawer. */
@@ -17,7 +17,7 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         this.ctx    = canvas.getContext("2d")!;
     }
 
-    draw(rotation: number, segments: WheelSegment[], segAngles: SegmentAngles[]): void {
+    draw(rotation: number, segments: WheelSegment[]): void {
         const wheelShape = this.getWheelShape();
 
         this.clearCanvas();
@@ -29,8 +29,8 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
 
         const offset = CanvasWheelDrawer.BASE_OFFSET + rotation;
 
-        this.fillSegments(segments, segAngles, offset, wheelShape);
-        this.drawTextLabels(segments, segAngles, offset, wheelShape);
+        this.fillSegments(segments, offset, wheelShape);
+        this.drawTextLabels(segments, offset, wheelShape);
         this.drawOuterRing(wheelShape);
         this.drawCenterCap(wheelShape);
         this.drawPointer(wheelShape);
@@ -62,19 +62,19 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         this.drawPointer(wheelShape);
     }
 
-    private fillSegments(segments: WheelSegment[], segAngles: SegmentAngles[], offset: number, wheelShape: Circle): void {
+    private fillSegments(segments: WheelSegment[], offset: number, wheelShape: Circle): void {
         for (let i = 0; i < segments.length; i++) {
-            this.fillSegment(segments[i], segAngles[i], offset, wheelShape);
+            this.fillSegment(segments[i], offset, wheelShape);
         }
     }
 
-    private fillSegment(seg: WheelSegment, angles: SegmentAngles, offset: number, wheelShape: Circle): void {
+    private fillSegment(seg: WheelSegment, offset: number, wheelShape: Circle): void {
         const ctx    = this.ctx;
         const cx     = wheelShape.x;
         const cy     = wheelShape.y;
         const r      = wheelShape.r;
-        const startA = angles.start + offset;
-        const endA   = startA + angles.sweep;
+        const startA = seg.angle.start + offset;
+        const endA   = startA + seg.angle.sweep;
 
         ctx.beginPath();
         ctx.moveTo(cx, cy);
@@ -102,20 +102,20 @@ class CanvasWheelDrawer implements ISpinningWheelDrawer {
         ctx.stroke();
     }
 
-    private drawTextLabels(segments: WheelSegment[], segAngles: SegmentAngles[], offset: number, wheelShape: Circle): void {
+    private drawTextLabels(segments: WheelSegment[], offset: number, wheelShape: Circle): void {
         for (let i = 0; i < segments.length; i++) {
-            this.drawTextLabel(segments[i], segAngles[i], offset, wheelShape);
+            this.drawTextLabel(segments[i], offset, wheelShape);
         }
     }
 
-    private drawTextLabel(seg: WheelSegment, angles: SegmentAngles, offset: number, wheelShape: Circle): void {
+    private drawTextLabel(seg: WheelSegment, offset: number, wheelShape: Circle): void {
         const ctx    = this.ctx;
         const cx     = wheelShape.x;
         const cy     = wheelShape.y;
         const r      = wheelShape.r;
-        const midA   = angles.mid + offset;
+        const midA   = seg.angle.mid + offset;
         const txtR   = r * 0.62;
-        const arcLen = angles.sweep * txtR;   // arc length at label radius
+        const arcLen = seg.angle.sweep * txtR;   // arc length at label radius
 
         // Font size adapts to canvas size and available arc length
         const fontSize = Maths.clamp(arcLen * 0.45, r * 0.05, r * 0.098);

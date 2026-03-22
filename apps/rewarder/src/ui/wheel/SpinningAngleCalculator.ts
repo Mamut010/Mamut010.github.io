@@ -19,37 +19,38 @@ interface SpinLandingResult {
     correctionDelta?: number;
 }
 
-/** Full wheel geometry and target index passed to every calculator. */
-interface SpinCalculationContext {
-    /** Index of the segment the wheel should land on. */
-    targetIndex: number;
-    /** All wheel segments (model data — weights, colors, labels, …). */
-    segments:    WheelSegment[];
-    /** Pre-computed angular geometry for every segment. */
-    segAngles:   SegmentAngles[];
+class SpinCalculationContext {
+    constructor(
+        public readonly targetIndex: number,
+        public readonly segments:    WheelSegment[],
+    ) {}
+
+    get targetSegment(): WheelSegment {
+        return this.segments[this.targetIndex];
+    }
 }
 
 interface ISpinningAngleCalculator {
     /**
      * Determine the precise landing position for this spin.
-     * @param context Full wheel geometry and the index of the winning segment.
+     * @param ctx Full wheel geometry and the index of the winning segment.
      */
-    calculate(context: SpinCalculationContext): SpinLandingResult;
+    calculate(ctx: SpinCalculationContext): SpinLandingResult;
 }
 
 interface ISpinningAngleCalculatorFactory {
     /** Decide which calculator to use given the current spinning context. */
-    create(context: SpinContext): ISpinningAngleCalculator;
+    create(ctx: SpinContext): ISpinningAngleCalculator;
 }
 
 // ── Concrete calculators ──────────────────────────────────────────────────────
 
 /** Lands at a uniformly random position within the inner 95% of the segment — single phase. */
 class NaturalAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
-        const { start, sweep } = segAngles[targetIndex];
-        const margin       = sweep * 0.025;  // avoid landing too close to edges where visual glitches are more likely
-        const landingAngle = start + margin + Math.random() * (sweep - 2 * margin);
+    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+        const angle        = ctx.targetSegment.angle;
+        const margin       = angle.sweep * 0.025;  // avoid landing too close to edges where visual glitches are more likely
+        const landingAngle = angle.start + margin + Math.random() * (angle.sweep - 2 * margin);
         return { landingAngle };
     }
 }
@@ -63,15 +64,15 @@ class NaturalAngleCalculator implements ISpinningAngleCalculator {
  * briefly visits the neighbouring segment before returning.
  */
 class OvershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
-        const { start, sweep } = segAngles[targetIndex];
+    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+        const angle = ctx.targetSegment.angle;
         // Landing sits close to the trailing edge (start) so the correction
         // needed to cross it is as small as possible.
         // Cap distInside so large segments don't push correctionDelta too high.
-        const distInside     = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
-        const landingAngle   = start + distInside;
+        const distInside     = Math.min(angle.sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle   = angle.start + distInside;
         // How far past the trailing edge the pointer should briefly appear.
-        const extraGap       = Maths.clamp(sweep * 0.04, 0.025, 0.06);
+        const extraGap       = Maths.clamp(angle.sweep * 0.04, 0.025, 0.06);
         const correctionDelta = distInside + extraGap;   // always crosses start
         return {
             landingAngle,
@@ -88,13 +89,13 @@ class OvershootAngleCalculator implements ISpinningAngleCalculator {
  * (start + sweep) so the pointer briefly sits in the preceding segment.
  */
 class UndershootAngleCalculator implements ISpinningAngleCalculator {
-    calculate({ targetIndex, segAngles }: SpinCalculationContext): SpinLandingResult {
-        const { start, sweep } = segAngles[targetIndex];
+    calculate(ctx: SpinCalculationContext): SpinLandingResult {
+        const angle = ctx.targetSegment.angle;
         // Landing sits close to the leading edge (start + sweep).
-        const distFromLeading = Math.min(sweep * (0.10 + Math.random() * 0.10), 0.08);
-        const landingAngle    = start + sweep - distFromLeading;
+        const distFromLeading = Math.min(angle.sweep * (0.10 + Math.random() * 0.10), 0.08);
+        const landingAngle    = angle.start + angle.sweep - distFromLeading;
         // How far past the leading edge the pointer should briefly appear.
-        const extraGap        = Maths.clamp(sweep * 0.04, 0.025, 0.06);
+        const extraGap        = Maths.clamp(angle.sweep * 0.04, 0.025, 0.06);
         const correctionDelta = -(distFromLeading + extraGap);  // always crosses start+sweep
         return {
             landingAngle,

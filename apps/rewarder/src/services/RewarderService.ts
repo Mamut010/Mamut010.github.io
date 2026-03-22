@@ -24,22 +24,32 @@ class RewarderService {
     stdPityInterceptor:        StandardPityInterceptor  | null = null;
     featuredPityInterceptors:  FeaturedPityInterceptor[]      = [];
 
+    private readonly _angleCalculatorFactory: ISegmentAngleCalculatorFactory;
+    private _angleCalculator: ISegmentAngleCalculator;
     private readonly _pipelineFactory: IPipelineFactory;
     private readonly _storage: IStorageService;
     private readonly _colorProvider: IRewardColorProvider;
 
-    profiles: RewardProfile[] = [];
     segmentAngleStrategy: SegmentAngleStrategy = SegmentAngleStrategy.Uniform;
+    profiles: RewardProfile[] = [];
     activeProfileId = "";
 
     constructor(
+        angleCalculatorFactory: ISegmentAngleCalculatorFactory,
         pipelineFactory: IPipelineFactory,
         storage: IStorageService,
         colorProvider: IRewardColorProvider
     ) {
+        this._angleCalculatorFactory = angleCalculatorFactory;
         this._pipelineFactory = pipelineFactory;
         this._storage = storage;
         this._colorProvider = colorProvider;
+
+        this._angleCalculator = this._angleCalculatorFactory.create(this.segmentAngleStrategy);
+    }
+
+    get segmentAngleCalculator(): ISegmentAngleCalculator {
+        return this._angleCalculator;
     }
 
     // ===== Init =====

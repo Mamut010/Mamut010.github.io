@@ -12,6 +12,7 @@ class RewarderApp {
 
     // ── Composition root ─────────────────────────────────────────────────────
     private readonly svc = new RewarderService(
+        new SegmentAngleCalculatorFactory(),
         new PipelineFactory(),
         new LocalStorageService("REWARDER_"),
         new CyclingColorProvider(),
@@ -24,11 +25,10 @@ class RewarderApp {
         this.svc.init();
         this.spinStrategy = this.spinModeFactory.create(WheelSpinStrategyCode.Normal);
         const canvas   = document.getElementById("wheel-canvas") as HTMLCanvasElement;
-        const angleCalculatorFactory = new SegmentAngleCalculatorFactory();
         const drawer   = new CanvasWheelDrawer(canvas);
         const animator = new TwoPhaseWheelAnimator();
         const spinner  = new DefaultWheelSpinner(animator, this.calculatorFactory);
-        this.wheel = new SpinningWheel(angleCalculatorFactory, drawer, animator, spinner);
+        this.wheel = new SpinningWheel(drawer, animator, spinner);
         this.bindStaticEvents();
         this.renderAll();
     }
@@ -523,15 +523,18 @@ class RewarderApp {
     // ===== Wheel helpers =====
 
     private updateWheelSegments(): void {
-        const leaves   = collectLeaves(this.svc.rewardNodes);
-        const segments: WheelSegment[] = leaves.map(leaf => ({
-            id:          leaf.id,
-            name:        leaf.name,
-            color:       leaf.color,
-            borderColor: leaf.borderColor,
-            weight:      this.effectiveWeight(leaf.id),
-        }));
-        this.wheel.setSegments(segments, this.svc.segmentAngleStrategy);
+        const leaves  = collectLeaves(this.svc.rewardNodes);
+        const weights = leaves.map(leaf => this.effectiveWeight(leaf.id));
+        const angles  = this.svc.segmentAngleCalculator.calculate(weights);
+        const segments = leaves.map((leaf, index) => new WheelSegment(
+            leaf.id,
+            leaf.name,
+            leaf.color,
+            leaf.borderColor,
+            weights[index],
+            angles[index],
+        ));
+        this.wheel.setSegments(segments);
     }
 
     private effectiveWeight(
