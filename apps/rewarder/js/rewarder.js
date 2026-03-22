@@ -1136,16 +1136,16 @@ class CanvasRewardNodeWheelDrawer {
         const r = wheelShape.r;
         const ph = Math.max(8, r * 0.098); // pointer height
         const pw = Math.max(5, r * 0.068); // pointer half-width
-        const tipY = cy - r - Math.max(1, r * 0.015); // tip just above the outer ring
+        const tipY = cy - 0.95 * r - Math.max(1, r * 0.015); // tip just above the outer ring
         const baseY = tipY - ph;
         ctx.beginPath();
         ctx.moveTo(cx, tipY);
         ctx.lineTo(cx - pw, baseY);
         ctx.lineTo(cx + pw, baseY);
         ctx.closePath();
-        ctx.shadowColor = "rgba(192,132,252,0.7)";
+        ctx.shadowColor = "rgba(43, 33, 53, 0.7)";
         ctx.shadowBlur = Math.max(4, r * 0.076);
-        ctx.fillStyle = "#c084fc";
+        ctx.fillStyle = "#8c61b8";
         ctx.fill();
         ctx.shadowBlur = 0;
     }
